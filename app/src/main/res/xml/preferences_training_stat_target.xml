@@ -54,4 +54,33 @@
             app:title="Wit" />
 
     </PreferenceCategory>
+
+    <PreferenceCategory app:title="Presets">
+
+        <Preference
+            app:key="presetRecommended"
+            app:summary="Apply recommended stat targets based on the training guide"
+            app:title="Recommended" />
+
+        <Preference
+            app:key="presetBalanced"
+            app:summary="Apply balanced stat distribution"
+            app:title="Balanced" />
+
+        <Preference
+            app:key="presetSpeedFocus"
+            app:summary="Apply speed-focused stat targets"
+            app:title="Speed Focus" />
+
+        <Preference
+            app:key="presetStaminaFocus"
+            app:summary="Apply stamina-focused stat targets"
+            app:title="Stamina Focus" />
+
+        <Preference
+            app:key="presetDefaults"
+            app:summary="Reset to default values"
+            app:title="Reset to Defaults" />
+
+    </PreferenceCategory>
 </PreferenceScreen>

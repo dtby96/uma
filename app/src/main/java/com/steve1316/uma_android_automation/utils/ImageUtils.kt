@@ -1007,12 +1007,14 @@ class ImageUtils(context: Context, private val game: Game) {
 	}
 
 	/**
-	 * Find the success percentage chance on the currently selected stat. Parameters are optional to allow for thread-safe operations.
+	 * Find the failure percentage chance on the currently selected stat.
+	 * Note: The game displays FAILURE rate directly (70% means 70% chance to fail, 30% to succeed).
+	 * Parameters are optional to allow for thread-safe operations.
 	 *
 	 * @param sourceBitmap Bitmap of the source image separately taken. Defaults to null.
 	 * @param trainingSelectionLocation Point location of the template image separately taken. Defaults to null.
 	 *
-	 * @return Integer representing the percentage.
+	 * @return Integer representing the FAILURE percentage as shown on screen.
 	 */
 	fun findTrainingFailureChance(sourceBitmap: Bitmap? = null, trainingSelectionLocation: Point? = null): Int {
 		// Crop the source screenshot to hold the success percentage only.
@@ -1059,8 +1061,9 @@ class ImageUtils(context: Context, private val game: Game) {
 				if (text.textBlocks.isNotEmpty()) {
 					for (block in text.textBlocks) {
 						try {
-							game.printToLog("[INFO] Detected Training failure chance with Google ML Kit: ${block.text}", tag = tag)
+							// The game shows failure rate directly
 							result = block.text.replace("%", "").trim().toInt()
+							game.printToLog("[INFO] Detected Training failure chance with Google ML Kit: ${result}%", tag = tag)
 						} catch (_: NumberFormatException) {
 						}
 					}
@@ -1089,6 +1092,7 @@ class ImageUtils(context: Context, private val game: Game) {
 				val detectedText = tessBaseAPI.utF8Text.replace("%", "")
 				game.printToLog("[INFO] Detected training failure chance with Tesseract: $detectedText", tag = tag)
 				val cleanedResult = detectedText.replace(Regex("[^0-9]"), "")
+				// The game shows failure rate directly
 				result = cleanedResult.toInt()
 			} catch (_: NumberFormatException) {
 				game.printToLog("[ERROR] Could not convert \"${tessBaseAPI.utF8Text.replace("%", "")}\" to integer.", tag = tag, isError = true)

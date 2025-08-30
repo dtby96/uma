@@ -3,6 +3,7 @@ package com.steve1316.uma_android_automation
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
+import android.util.Log
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
@@ -36,10 +37,11 @@ class MainActivity : AppCompatActivity() {
 		val navController = findNavController(R.id.nav_host_fragment)
 
 		// Set application locale to combat cases where user's language uses commas instead of decimal points for floating numbers.
-		val config: Configuration? = this.getResources().configuration
-		val locale = Locale("en")
+		val locale = Locale.forLanguageTag("en")
 		Locale.setDefault(locale)
-		this.getResources().updateConfiguration(config, this.getResources().displayMetrics)
+		val config = Configuration(resources.configuration)
+		config.setLocale(locale)
+		createConfigurationContext(config)
 		
 		// Set the Link to the "Go to GitHub" button.
 		val githubTextView: TextView = findViewById(R.id.github_textView)
@@ -55,7 +57,9 @@ class MainActivity : AppCompatActivity() {
 		
 		// Load OpenCV native library. This will throw a "E/OpenCV/StaticHelper: OpenCV error: Cannot load info library for OpenCV". It is safe to
 		// ignore this error. OpenCV functionality is not impacted by this error.
-		OpenCVLoader.initDebug()
+		if (!OpenCVLoader.initLocal()) {
+			Log.e(loggerTag, "Unable to load OpenCV locally")
+		}
 	}
 	
 	override fun onSupportNavigateUp(): Boolean {

@@ -74,7 +74,7 @@ android {
             isEnable = true
             reset()
             //noinspection ChromeOsAbiSupport
-            include("armeabi-v7a", "arm64-v8a")
+            include("arm64-v8a")  // Only build for ARM64
             // include "armeabi","armeabi-v7a",'arm64-v8a',"mips","x86","x86_64"
             isUniversalApk = false
         }

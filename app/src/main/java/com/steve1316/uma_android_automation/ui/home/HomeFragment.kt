@@ -15,6 +15,8 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
 import androidx.core.content.edit
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.preference.PreferenceManager
 import com.beust.klaxon.JsonReader
@@ -40,6 +42,25 @@ class HomeFragment : Fragment() {
 	private lateinit var myContext: Context
 	private lateinit var homeFragmentView: View
 	private lateinit var startButton: Button
+	
+	private lateinit var mediaProjectionLauncher: ActivityResultLauncher<Intent>
+	
+	override fun onCreate(savedInstanceState: Bundle?) {
+		super.onCreate(savedInstanceState)
+		myContext = requireContext()
+		
+		// Initialize the ActivityResultLauncher
+		mediaProjectionLauncher = registerForActivityResult(
+			ActivityResultContracts.StartActivityForResult()
+		) { result ->
+			if (result.resultCode == Activity.RESULT_OK) {
+				// Start up the MediaProjection service after the user accepts the onscreen prompt.
+				result.data?.let { data ->
+					myContext.startService(MediaProjectionService.getStartIntent(myContext, result.resultCode, data))
+				}
+			}
+		}
+	}
 	
 	@SuppressLint("SetTextI18n")
 	override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -208,13 +229,6 @@ class HomeFragment : Fragment() {
 			.start()
 	}
 
-	@Deprecated("Deprecated in Java")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-		if (requestCode == 100 && resultCode == Activity.RESULT_OK) {
-			// Start up the MediaProjection service after the user accepts the onscreen prompt.
-			myContext.startService(data?.let { MediaProjectionService.getStartIntent(myContext, resultCode, data) })
-		}
-	}
 	
 	/**
 	 * Checks to see if the application is ready to start.
@@ -230,7 +244,7 @@ class HomeFragment : Fragment() {
 	 */
 	private fun startProjection() {
 		val mediaProjectionManager = context?.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-		startActivityForResult(mediaProjectionManager.createScreenCaptureIntent(), 100)
+		mediaProjectionLauncher.launch(mediaProjectionManager.createScreenCaptureIntent())
 	}
 	
 	/**

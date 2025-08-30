@@ -1,8 +1,8 @@
 # Uma Musume Automation For Android
 
-![GitHub commit activity](https://img.shields.io/github/commit-activity/m/steve1316/uma-android-automation?logo=GitHub) ![GitHub last commit](https://img.shields.io/github/last-commit/steve1316/uma-android-automation?logo=GitHub) ![GitHub issues](https://img.shields.io/github/issues/steve1316/uma-android-automation?logo=GitHub) ![GitHub pull requests](https://img.shields.io/github/issues-pr/steve1316/uma-android-automation?logo=GitHub) ![GitHub](https://img.shields.io/github/license/steve1316/uma-android-automation?logo=GitHub)
+![GitHub commit activity](https://img.shields.io/github/commit-activity/m/JordanRO2/uma-android-automation?logo=GitHub) ![GitHub last commit](https://img.shields.io/github/last-commit/JordanRO2/uma-android-automation?logo=GitHub) ![GitHub issues](https://img.shields.io/github/issues/JordanRO2/uma-android-automation?logo=GitHub) ![GitHub pull requests](https://img.shields.io/github/issues-pr/JordanRO2/uma-android-automation?logo=GitHub) ![GitHub](https://img.shields.io/github/license/JordanRO2/uma-android-automation?logo=GitHub)
 
-> Discord here: https://discord.gg/5Yv4kqjAbm
+> Fork of the original project by steve1316 with enhanced training logic and improved decision-making algorithms.
 
 This Android application written in Kotlin is designed to fully automate a run of Uma Musume Pretty Derby by offering a set of options to customize what event rewards the bot should prioritise, stats to focus on, etc. Building on top of the work done for ![Uma Android Training Helper](https://github.com/steve1316/uma-android-training-helper), this aims to solve the issue of spending too much hands-on time with completing a run for Uma Musume Pretty Derby.
 
@@ -27,6 +27,26 @@ This project is purely for educational purposes to learn about Android automatio
             -   Display resolution set to Portrait 1080 x 1920
             -   Pixel density 240 DPI (Medium)
 
+# Recent Improvements (v2.0)
+
+## Enhanced Training Logic
+- **Smart Risk Management**: Dynamic failure threshold adjustment based on energy levels and training value
+- **Wit vs Rest Intelligence**: Sophisticated evaluation of whether Wit training or Rest provides better value
+- **Stat Target Awareness**: Bot now tracks progress toward stat targets and adjusts priorities accordingly
+- **Deficit-Based Prioritization**: Training selection adapts based on how far stats are from targets
+
+## Summer Training Optimization
+- **Pre-Summer Preparation**: Bot rests 2 turns before summer if energy < 60% to maximize Lv5 training
+- **Aggressive Summer Training**: Higher risk tolerance during summer to maximize the 4-turn window
+- **Smart Summer Rest**: Only rests during summer if truly needed (energy < 40% or mood Bad/Awful)
+- **Enhanced Summer Scoring**: All trainings get bonus value during summer with extra bonuses for high-value options
+
+## Bug Fixes
+- Fixed failure rate interpretation (game shows failure %, not success %)
+- Fixed training selection to properly filter by acceptable failure rates
+- Eliminated redundant training checks that were wasting turns
+- Fixed Wit stat target checking to avoid unnecessary overshooting
+
 # Features
 
 -   [x] Able to complete a run from start/midway to its completion.
@@ -34,6 +54,9 @@ This project is purely for educational purposes to learn about Android automatio
 -   [x] Handles races, both via skipping and running the race manually.
 -   [x] Runs extra races to farm fans when enabled in the settings.
 -   [x] A multitude of settings to configure including setting preferred stat targets per distance.
+-   [x] Advanced energy and mood management with context-aware decisions.
+-   [x] Intelligent training selection with multi-factor scoring system.
+-   [x] Summer training optimization with pre-summer preparation.
 
 # Instructions
 
@@ -117,3 +140,43 @@ kotlin {
 6. [Tesseract4Android - For performing OCR on the screen](https://github.com/adaptech-cz/Tesseract4Android)
 7. [string-similarity - For comparing string similarities during text detection](https://github.com/rrice/java-string-similarity)
 8. [AppUpdater - For automatically checking and notifying the user for new app updates](https://github.com/javiersantos/AppUpdater)
+
+
+# Next Steps
+
+## Architecture Improvements
+- **Modularization**: Separate the bot logic into distinct modules (Training, Racing, Events, etc.)
+- **Clean Architecture**: Implement proper separation of concerns with Domain, Data, and Presentation layers
+- **Dependency Injection**: Migrate to Hilt for better dependency management
+- **Coroutines**: Replace Thread usage with Kotlin Coroutines for better async handling
+
+## UI/UX Enhancements
+- **Material Design 3**: Update UI to follow latest Material Design guidelines
+- **Compose Migration**: Gradually migrate from XML layouts to Jetpack Compose
+- **Real-time Stats Display**: Show live training progress and decision explanations
+- **Profile Management**: Support multiple training profiles for different characters/strategies
+
+## Bot Intelligence
+- **Machine Learning**: Implement ML models for better image recognition and decision making
+- **Adaptive Learning**: Bot learns from successful runs to improve future performance
+- **Event Chain Recognition**: Better handling of complex event chains and storylines
+- **Race Strategy**: Implement intelligent race skill selection based on race conditions
+
+## Technical Improvements
+- **Unit Testing**: Add comprehensive test coverage for core bot logic
+- **Performance Optimization**: Reduce battery usage and improve processing speed
+- **Error Recovery**: Better handling of unexpected game states and network issues
+- **Cloud Sync**: Optional cloud backup of settings and training profiles
+
+## Community Features
+- **Strategy Sharing**: Allow users to share successful training strategies
+- **Statistics Dashboard**: Track and analyze training run success rates
+- **Multi-language Support**: Translate UI and logs to other languages
+
+# Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+
+# License
+
+This project is licensed under the GNU GPL v3 License - see the LICENSE file for details.
