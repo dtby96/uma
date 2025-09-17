@@ -2162,7 +2162,7 @@ class Game(val myContext: Context) {
 			waitForLoading()
 			// Select the preferred race strategy if it is not already selected.
 			printToLog("[DEBUG] 2 inside handleraceevents strategy selection")
-			if (strategySelected == false) {
+			if (!strategySelected) {
 				if (strategyImageName != "default") {
 					findAndTapImage("race_change_strategy", tries = 10, region = imageUtils.regionBottomHalf)
 					findAndTapImage(strategyImageName + "_select", tries = 10, region = imageUtils.regionBottomHalf)
@@ -2428,7 +2428,7 @@ class Game(val myContext: Context) {
 		printToLog("\n[RACE] Starting Standalone Racing process...")
 
 		printToLog("[DEBUG] 1st")
-		if (strategySelected == false) {
+		if (!strategySelected) {
 			if (strategyImageName != "default") {
 				findAndTapImage("race_change_strategy", tries = 10, region = imageUtils.regionBottomHalf)
 				findAndTapImage(strategyImageName + "_select", tries = 10, region = imageUtils.regionBottomHalf)
