@@ -9,7 +9,6 @@ import com.steve1316.uma_android_automation.MainActivity
  */
 open class Campaign(val game: Game) {
 	protected val tag: String = "[${MainActivity.Companion.loggerTag}]Normal"
-
 	/**
 	 * Campaign-specific training event handling.
 	 */

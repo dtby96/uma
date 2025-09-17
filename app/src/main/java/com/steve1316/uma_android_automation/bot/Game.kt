@@ -100,6 +100,16 @@ class Game(val myContext: Context) {
 	private var currentDate: Date = Date(1, "Early", 1, 1)
 	private var inheritancesDone = 0
 	private val startTime: Long = System.currentTimeMillis()
+	// Hard stop dates for campaign runs
+	private val stopDates = setOf(
+//		Date(2, "Early", 4, 31), // Satsuki Sho
+//		Date(3, "Late", 11, 70)  // Japan Cup
+		Date(5, "Late", 30, 1000)
+	)
+	private val extraScrollDates = setOf(
+		Date(3, "Late", 11, 70),  // Japan Cup
+		Date(2, "Early", 4, 31), // Satsuki Sho
+	)
 
 	////////////////////////////////////////////////////////////////////
 	////////////////////////////////////////////////////////////////////
@@ -132,6 +142,81 @@ class Game(val myContext: Context) {
             return result
         }
     }
+	private val speRaces = listOf(
+		// some other race for insufficient fans ,
+		//kikugasho
+//		Date(1, "Early", 11, 21),
+
+//		//erica sho but sometimes doesnt run.
+		//Date(1, "Early", 12, 23),
+
+		// Junior Class
+		// Hopeful Stakes: First Year, December 2
+		// From trainingRaceDateList: Date(1, "Late", 12, 24)
+		Date(1, "Late", 12, 24),
+
+//		//late feb Hanshin turn 2200 med
+//		Date(2, "Late", 2, 28),
+
+		// Classic Class
+		// Satsuki Sho: Second Year, April 1
+		// From trainingRaceDateList: Date(2, "Early", 4, 31) comment out case it will run wasurengagua sho why? instead on mcqueen. answer is, cause not enough fans.
+		//so run another race before hopeful stakes to ensure got more fans /mostly for spark farming/parentg1epithets
+		//sometimes satsuki is 2nd row , sometimes pre op wasurengagua will show and sastuki will be 3rd. why?
+		Date(2, "Early", 4, 31),
+
+		// Classic Class
+		// Tokyo Yushun Japanese Derby : Second Year, May 2 , Somehow its 2nd option but bot picks it | it just looks the first 1-3 races from the race selection list and at only double prediction races with the most fans.
+		Date(2, "Late", 5, 34),
+
+		// Takarazuka Kinen: Second Year, June 2
+		// From trainingRaceDateList: Date(2, "Late", 6, 36)
+		//Date(2, "Late", 6, 36),
+
+		// kikkuka sho : Second Year, June 2
+		Date(2, "Late", 10, 44),
+
+		// Queen Elizabeth II Cup: Second Year, November 1
+		// From trainingRaceDateList: Date(2, "Early", 11, 45) ,  prevent 3 consec race , race other time
+		Date(2, "Early", 11, 45),
+
+		// Japan Cup: Second Year, November 2
+		// From trainingRaceDateList: Date(2, "Late", 11, 46)
+//		Date(2, "Late", 11, 46),
+
+//		// Arima Kinen: Second Year, December 2
+//		// From trainingRaceDateList: Date(2, "Late", 12, 48)
+//		Date(2, "Late", 12, 48),
+
+		// Senior Class
+		// Osaka Hai: Third Year, March 2
+		// From trainingRaceDateList: Date(3, "Late", 3, 54)
+		Date(3, "Late", 3, 54),
+
+		// Senior Class
+		// tenno sho spring : Third Year, Apr 2
+		// From trainingRaceDateList: Date(3, "Late", 3, 54)
+		Date(3, "Late", 4, 56),
+
+		// Takarazuka Kinen: Third Year, June 2
+		// From trainingRaceDateList: Date(3, "Late", 6, 60)
+		Date(3, "Late", 6, 60),
+
+		// Tenno Sho (Autumn): Third Year, October 2
+		// From trainingRaceDateList: Date(3, "Late", 10, 68)
+		Date(3, "Late", 10, 68),
+
+		// Japan Cup: Third Year, November 2
+		// issue with only selecting first option , running andromeda stakes instead.
+		Date(3, "Late", 11, 70),
+
+//		// Queen Elizabeth II Cup: Third Year, November 1
+//		// From trainingRaceDateList: Date(3, "Early", 11, 69)
+//		Date(3, "Early", 11, 69),
+
+		// Arima Kinen: Third Year, December 2
+		Date(3, "Late", 12, 72),
+	)
 
 	data class Date(
 		val year: Int,
@@ -497,9 +582,10 @@ class Game(val myContext: Context) {
 	fun checkExtraRaceAvailability(): Boolean {
 		val dayNumber = imageUtils.determineDayForExtraRace()
 		printToLog("\n[INFO] Current remaining number of days before the next mandatory race: $dayNumber.")
-
 		// If the setting to force racing extra races is enabled, always return true.
 		if (enableForceRacing) return true
+
+		if (speRaces.contains(currentDate) && !raceRepeatWarningCheck) return true
 
 		return enableFarmingFans && dayNumber % daysToRunExtraRaces == 0 && !raceRepeatWarningCheck &&
 				imageUtils.findImage("race_select_extra_locked_uma_finals", tries = 1, region = imageUtils.regionBottomHalf).first == null &&
@@ -2103,6 +2189,69 @@ class Game(val myContext: Context) {
 			gestureUtils.swipe(statusLocation.x.toFloat(), statusLocation.y.toFloat() + 300, statusLocation.x.toFloat(), statusLocation.y.toFloat() + 888)
 			wait(1.0)
 
+			// extra scroll: Only on dates where we care about the 3rd row (e.g., Japan Cup / Satsuki)
+			if (currentDate in extraScrollDates) {
+				val status = imageUtils.findImage("race_status").first
+				if (status != null) {
+					// Count/positions BEFORE swipe (to verify movement)
+					val beforeMatches = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf)
+					val beforeY = beforeMatches.map { it.y }
+
+					// Long upward swipe (finger up => content scrolls down)
+					printToLog("[DEBUG] Swiping  test: oldX=${status.x.toFloat()}, oldY=${status.y.toFloat() + 1000}, newX=${status.x.toFloat()},newY=${status.y.toFloat() + 300}")
+					gestureUtils.swipe(
+						status.x.toFloat(),
+						status.y.toFloat() + 300,   // start lower
+						status.x.toFloat(),
+						status.y.toFloat(),
+						500// end higher
+					)
+
+					wait(1.0)
+
+					// Check AFTER swipe
+					val afterMatches = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf)
+					val afterY = afterMatches.map { it.y }
+					printToLog("[DEBUG] Swipe test: before=${beforeY}, after=${afterY}")
+
+					// If nothing changed, retry with an even longer swipe once
+					if (afterY == beforeY) {
+						wait(1.0)
+						val afterMatches2 = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf)
+						val afterY2 = afterMatches2.map { it.y }
+						gestureUtils.swipe(
+							status.x.toFloat(),
+							status.y.toFloat() + 300,   // start lower
+							status.x.toFloat(),
+							status.y.toFloat(),
+							500// end higher
+						)
+						printToLog("[DEBUG] Swipe retry: before=${beforeY}, after=${afterY2}")
+					}
+
+					// Move the highlight down once so it's on the newly revealed 3rd row (if present)
+					val cur = imageUtils.findImage("race_extra_selection", region = imageUtils.regionBottomHalf).first
+					if (cur != null) {
+						if (imageUtils.isTablet) {
+							tap(
+								imageUtils.relX(cur.x, (-100 * 1.36).toInt()).toDouble(),
+								imageUtils.relY(cur.y,  (150 * 1.50).toInt()).toDouble(),
+								"race_extra_selection",
+								ignoreWaiting = true
+							)
+						} else {
+							tap(
+								imageUtils.relX(cur.x, -100).toDouble(),
+								imageUtils.relY(cur.y, 150).toDouble(),
+								"race_extra_selection",
+								ignoreWaiting = true
+							)
+						}
+						wait(0.5)
+					}
+				}
+			}
+			//Extra
 			// Now determine the best extra race with the following parameters: highest fans and double star prediction.
 			// First find the fans of only the extra races on the screen that match the double star prediction. Read only 3 extra races.
 			var count = 0
@@ -2116,7 +2265,8 @@ class Game(val myContext: Context) {
 			val listOfFans = mutableListOf<Int>()
 			val extraRaceLocation = mutableListOf<Point>()
 			val doublePredictionLocations = imageUtils.findAll("race_extra_double_prediction")
-			if (doublePredictionLocations.size == 1) {
+
+			if (doublePredictionLocations.size == 1 ) {
 				printToLog("[RACE] There is only one race with double predictions so selecting that one.")
 				tap(
 					doublePredictionLocations[0].x,
@@ -2164,12 +2314,9 @@ class Game(val myContext: Context) {
 							)
 						}
 					}
-
 					wait(0.5)
-
 					count++
 				}
-
 				val fansList = listOfRaces.joinToString(", ") { it.fans.toString() }
 				printToLog("[RACE] Number of fans detected for each extra race are: $fansList")
 
@@ -2461,6 +2608,11 @@ class Game(val myContext: Context) {
 		val dateString = imageUtils.determineDayNumber()
 		currentDate = textDetection.determineDateFromString(dateString)
 		printToLog("\n[DATE] It is currently $currentDate.")
+		if (currentDate in stopDates) {
+			printToLog("[STOP] Reached stop date: $currentDate. Stopping bot.")
+			notificationMessage = "Bot stopped at $currentDate"
+			BotService.isRunning = false   // your wait() checks this and exits cleanly // Campaign.start() will break because it checks this return value
+		}
 	}
 
 	/**
@@ -2665,15 +2817,14 @@ class Game(val myContext: Context) {
 			findAndTapImage("cancel", region = imageUtils.regionBottomHalf)
 		} else if (findAndTapImage("back", tries = 1, region = imageUtils.regionBottomHalf, suppressError = true)) {
 			wait(1.0)
+
 		} else if (!BotService.isRunning) {
 			throw InterruptedException()
 		} else {
 			printToLog("[INFO] Did not detect any popups or the Crane Game on the screen. Moving on...")
 		}
-
 		return true
 	}
-
 	/**
 	 * Bot will begin automation here.
 	 *
