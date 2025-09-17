@@ -21,6 +21,7 @@ object SettingsPrinter {
 		
 		// Main Settings
 		val campaign: String = sharedPreferences.getString("campaign", "")!!
+		val strategy: String = sharedPreferences.getString("strategy", "")!!
 		val enableFarmingFans = sharedPreferences.getBoolean("enableFarmingFans", false)
 		val daysToRunExtraRaces: Int = sharedPreferences.getInt("daysToRunExtraRaces", 4)
 		val enableSkillPointCheck: Boolean = sharedPreferences.getBoolean("enableSkillPointCheck", false)

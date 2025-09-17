@@ -92,6 +92,7 @@ class HomeFragment : Fragment() {
 		
 		// Main Settings page
 		val campaign: String = sharedPreferences.getString("campaign", "")!!
+		val strategy: String = sharedPreferences.getString("strategy", "")!!
 
 		// Training Settings page
 		val statPrioritization: String = sharedPreferences.getString("statPrioritization", "Speed|Stamina|Power|Guts|Wit")!!
@@ -180,7 +181,12 @@ class HomeFragment : Fragment() {
 		} else {
 			"⚠️ Please select one in the Select Campaign option"
 		}
-		
+		//strategy
+		val strategyString: String = if (strategy != "") {
+			"🎯 $strategy"
+		} else {
+			"⚠️ Please select one in the Select Race Strategy option"
+		}
 		val settingsStatusTextView: TextView = homeFragmentView.findViewById(R.id.settings_status)
 		settingsStatusTextView.text = SettingsPrinter.getSettingsString(requireContext())
 		

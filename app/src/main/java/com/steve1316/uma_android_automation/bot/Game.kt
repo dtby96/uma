@@ -38,6 +38,15 @@ class Game(val myContext: Context) {
 	private var sharedPreferences: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(myContext)
 	private val campaign: String = sharedPreferences.getString("campaign", "")!!
 	private val debugMode: Boolean = sharedPreferences.getBoolean("debugMode", false)
+	private val strategy: String = sharedPreferences.getString("strategy", "")!!
+	private val strategyImageName: String = when (strategy) {
+		"Front Runner" -> "strategy_front"
+		"Pace Chaser" -> "strategy_pace"
+		"Late Surger" -> "strategy_late"
+		"End Closer" -> "strategy_end"
+		else -> "default"
+	}
+
 
 	////////////////////////////////////////////////////////////////////
 	////////////////////////////////////////////////////////////////////
