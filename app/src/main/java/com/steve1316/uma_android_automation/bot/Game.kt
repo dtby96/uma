@@ -93,7 +93,7 @@ class Game(val myContext: Context) {
 	private var raceRepeatWarningCheck = false
 	var encounteredRacingPopup = false
 	var skipRacing = false
-
+	var strategySelected = false
 	////////////////////////////////////////////////////////////////////
 	////////////////////////////////////////////////////////////////////
 	// Stops
@@ -2160,6 +2160,17 @@ class Game(val myContext: Context) {
 			wait(2.0)
 
 			waitForLoading()
+			// Select the preferred race strategy if it is not already selected.
+			printToLog("[DEBUG] 2 inside handleraceevents strategy selection")
+			if (strategySelected == false) {
+				if (strategyImageName != "default") {
+					findAndTapImage("race_change_strategy", tries = 10, region = imageUtils.regionBottomHalf)
+					findAndTapImage(strategyImageName + "_select", tries = 10, region = imageUtils.regionBottomHalf)
+					findAndTapImage("confirm", tries = 10, region = imageUtils.regionBottomHalf)
+					wait(1.0)
+				}
+				strategySelected = true;
+			}
 
 			// Skip the race if possible, otherwise run it manually.
 			val resultCheck: Boolean = if (imageUtils.findImage("race_skip_locked", tries = 5, region = imageUtils.regionBottomHalf).first == null) {
@@ -2382,6 +2393,18 @@ class Game(val myContext: Context) {
 			findAndTapImage("race_confirm", tries = 10, region = imageUtils.regionBottomHalf)
 			wait(2.0)
 
+
+			// Select the preferred race strategy if it is not already selected.
+			printToLog("[DEBUG] 3rd inside handleraceevents strategy selection")
+			if (!strategySelected) {
+				if (strategyImageName != "default") {
+					findAndTapImage("race_change_strategy", tries = 10, region = imageUtils.regionBottomHalf)
+					findAndTapImage(strategyImageName + "_select", tries = 10, region = imageUtils.regionBottomHalf)
+					findAndTapImage("confirm", tries = 10, region = imageUtils.regionBottomHalf)
+					wait(1.0)
+				}
+				strategySelected = true;
+			}
 			// Skip the race if possible, otherwise run it manually.
 			val resultCheck: Boolean = if (imageUtils.findImage("race_skip_locked", tries = 5, region = imageUtils.regionBottomHalf).first == null) {
 				skipRace()
@@ -2403,6 +2426,17 @@ class Game(val myContext: Context) {
 	 */
 	fun handleStandaloneRace() {
 		printToLog("\n[RACE] Starting Standalone Racing process...")
+
+		printToLog("[DEBUG] 1st")
+		if (strategySelected == false) {
+			if (strategyImageName != "default") {
+				findAndTapImage("race_change_strategy", tries = 10, region = imageUtils.regionBottomHalf)
+				findAndTapImage(strategyImageName + "_select", tries = 10, region = imageUtils.regionBottomHalf)
+				findAndTapImage("confirm", tries = 10, region = imageUtils.regionBottomHalf)
+				wait(1.0)
+			}
+			strategySelected = true;
+		}
 
 		// Skip the race if possible, otherwise run it manually.
 		val resultCheck: Boolean = if (imageUtils.findImage("race_skip_locked", tries = 5, region = imageUtils.regionBottomHalf).first == null) {
