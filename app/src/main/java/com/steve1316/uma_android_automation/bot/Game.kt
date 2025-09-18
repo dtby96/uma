@@ -152,80 +152,143 @@ class Game(val myContext: Context) {
         }
     }
 //	private val speRaces = listOf( Date(99, "Late", 99, 99),
+private val speRaces = listOf(
 
-	private val speRaces = listOf(
-		// some other race for insufficient fans ,
-		//kikugasho
-		//Date(1, "Early", 11, 21),
 
-		////erica sho but sometimes doesnt run.
-		//Date(1, "Early", 12, 23),
+	// Junior Class (Year 1)
+	// Asahi Hai Futurity Stakes: Year 1, December 1 @ Hanshin (Dirt, Mile 1600m)
+	Date(1, "Early", 12, 23),
 
-		// Junior Class
-		// Hopeful Stakes: First Year, December 2
-		// From trainingRaceDateList: Date(1, "Late", 12, 24)
-		Date(1, "Late", 12, 24),
+	// Hanshin Juvenile Fillies: Year 1, December 1 @ Hanshin (Turf, Mile 1600m)
+	Date(1, "Early", 12, 23),
 
-		// Classic Class
-		// Satsuki Sho: Second Year, April 1
-		// From trainingRaceDateList: Date(2, "Early", 4, 31) comment out case it will run wasurengagua sho why? instead on mcqueen. answer is, cause not enough fans.
-		//so run another race before hopeful stakes to ensure got more fans /mostly for spark farming/parentg1epithets
-		//sometimes satsuki is 2nd row , sometimes pre op wasurengagua will show and sastuki will be 3rd. why?
-		Date(2, "Early", 4, 31),
+	// Hopeful Stakes: Year 1, December 2 @ Nakayama (Turf, Medium 2000m)
+	Date(1, "Late", 12, 24),
 
-		// Classic Class
-		// Tokyo Yushun Japanese Derby : Second Year, May 2 , Somehow its 2nd option but bot picks it | it just looks the first 1-3 races from the race selection list and at only double prediction races with the most fans.
-		Date(2, "Late", 5, 34),
 
-		// Takarazuka Kinen: Second Year, June 2
-		// From trainingRaceDateList: Date(2, "Late", 6, 36)
-		//Date(2, "Late", 6, 36),
+	// Classic Class (Year 2)
+	// Oka Sho: Year 2, April 1 @ Hanshin (Turf, Mile 1600m)
+	Date(2, "Early", 4, 31),
 
-		// kikkuka sho : Second Year, June 2
-		Date(2, "Late", 10, 44),
+	// Satsuki Sho: Year 2, April 1 @ Nakayama (Turf, Medium 2000m)
+	Date(2, "Early", 4, 31),
 
-		// Queen Elizabeth II Cup: Second Year, November 1
-		// From trainingRaceDateList: Date(2, "Early", 11, 45) ,  prevent 3 consec race , race other time
-		Date(2, "Early", 11, 45),
+	// NHK Mile Cup: Year 2, May 1 @ Tokyo (Turf, Mile 1600m)
+	Date(2, "Early", 5, 33),
 
-		// Japan Cup: Second Year, November 2
-		// From trainingRaceDateList: Date(2, "Late", 11, 46)
-//		Date(2, "Late", 11, 46),
+	// Japanese Oaks: Year 2, May 2 @ Tokyo (Turf, Medium 2400m)
+	Date(2, "Late", 5, 34),
 
-//		// Arima Kinen: Second Year, December 2
-//		// From trainingRaceDateList: Date(2, "Late", 12, 48)
-//		Date(2, "Late", 12, 48),
+	// Tokyo Yushun Japanese Derby: Year 2, May 2 @ Tokyo (Turf, Medium 2400m)
+	Date(2, "Late", 5, 34),
 
-		// Senior Class
-		// Osaka Hai: Third Year, March 2
-		// From trainingRaceDateList: Date(3, "Late", 3, 54)
-		Date(3, "Late", 3, 54),
+	// Yasuda Kinen: Year 2, June 1 @ Tokyo (Turf, Mile 1600m)
+	Date(2, "Early", 6, 35),
 
-		// Senior Class
-		// tenno sho spring : Third Year, Apr 2
-		// From trainingRaceDateList: Date(3, "Late", 3, 54)
-		Date(3, "Late", 4, 56),
+	// Takarazuka Kinen: Year 2, June 2 @ Hanshin (Turf, Medium 2200m)
+	Date(2, "Late", 6, 36),
 
-		// Takarazuka Kinen: Third Year, June 2
-		// From trainingRaceDateList: Date(3, "Late", 6, 60)
-		Date(3, "Late", 6, 60),
+	// Japan Dirt Derby: Year 2, July 1 @ Ooi (Dirt, Medium 2000m)
+	Date(2, "Early", 7, 37),
 
-		// Tenno Sho (Autumn): Third Year, October 2
-		// From trainingRaceDateList: Date(3, "Late", 10, 68)
-		Date(3, "Late", 10, 68),
+	// Sprinters Stakes: Year 2, September 2 @ Nakayama (Turf, Sprint 1200m)
+	Date(2, "Late", 9, 42),
 
-		// Japan Cup: Third Year, November 2
-		// issue with only selecting first option , running andromeda stakes instead.
-		Date(3, "Late", 11, 70),
+	// Kikuka Sho: Year 2, October 2 @ Kyoto (Turf, Long 3000m)
+	Date(2, "Late", 10, 44),
 
-//		// Queen Elizabeth II Cup: Third Year, November 1
-//		// From trainingRaceDateList: Date(3, "Early", 11, 69)
-//		Date(3, "Early", 11, 69),
+	// Shuka Sho: Year 2, October 2 @ Kyoto (Turf, Medium 2000m)
+	Date(2, "Late", 10, 44),
 
-		// Arima Kinen: Third Year, December 2
-		Date(3, "Late", 12, 72),
+	// Tenno Sho Autumn: Year 2, October 2 @ Tokyo (Turf, Medium 2000m)
+	Date(2, "Late", 10, 44),
+
+	// JBC Classic: Year 2, November 1 @ Ooi (Dirt, Medium 2000m)
+	Date(2, "Early", 11, 45),
+
+	// JBC Ladies' Classic: Year 2, November 1 @ Ooi (Dirt, Mile 1800m)
+	Date(2, "Early", 11, 45),
+
+	// JBC Sprint: Year 2, November 1 @ Ooi (Dirt, Sprint 1200m)
+	Date(2, "Early", 11, 45),
+
+	// Queen Elizabeth II Cup: Year 2, November 1 @ Kyoto (Turf, Medium 2200m)
+	Date(2, "Early", 11, 45),
+
+	// Japan Cup: Year 2, November 2 @ Tokyo (Turf, Medium 2400m)
+	Date(2, "Late", 11, 46),
+
+	// Mile Championship: Year 2, November 2 @ Kyoto (Turf, Mile 1600m)
+	Date(2, "Late", 11, 46),
+
+	// Champions Cup: Year 2, November 2 @ Chukyo (Dirt, Mile 1800m)
+	Date(2, "Late", 11, 46),
+
+	// Arima Kinen: Year 2, December 2 @ Nakayama (Turf, Long 2500m)
+	Date(2, "Late", 12, 48),
+
+	// Tokyo Daishoten: Year 2, December 2 @ Ooi (Dirt, Medium 2000m)
+	Date(2, "Late", 12, 48),
+
+	// Senior Class (Year 3)
+	// February Stakes: Year 3, February 2 @ Tokyo (Dirt, Mile 1600m)
+	Date(3, "Late", 2, 52),
+
+	// Osaka Hai: Year 3, March 2 @ Hanshin (Turf, Medium 2000m)
+	Date(3, "Late", 3, 54),
+
+	// Takamatsunomiya Kinen: Year 3, March 2 @ Chukyo (Turf, Sprint 1200m)
+	Date(3, "Late", 3, 54),
+
+	// Tenno Sho Spring: Year 3, April 2 @ Kyoto (Turf, Long 3200m)
+	Date(3, "Late", 4, 56),
+
+	// Victoria Mile: Year 3, May 1 @ Tokyo (Turf, Mile 1600m)
+	Date(3, "Early", 5, 57),
+
+	// Yasuda Kinen: Year 3, June 1 @ Tokyo (Turf, Mile 1600m)
+	Date(3, "Early", 6, 59),
+
+	// Takarazuka Kinen: Year 3, June 2 @ Hanshin (Turf, Medium 2200m)
+	Date(3, "Late", 6, 60),
+
+	// Teio Sho: Year 3, June 2 @ Ooi (Dirt, Medium 2000m)
+	Date(3, "Late", 6, 60),
+
+	// Sprinters Stakes: Year 3, September 2 @ Nakayama (Turf, Sprint 1200m)
+	Date(3, "Late", 9, 66),
+
+	// Tenno Sho Autumn: Year 3, October 2 @ Tokyo (Turf, Medium 2000m)
+	Date(3, "Late", 10, 68),
+
+	// JBC Classic: Year 3, November 1 @ Ooi (Dirt, Medium 2000m)
+	Date(3, "Early", 11, 69),
+
+	// JBC Ladies' Classic: Year 3, November 1 @ Ooi (Dirt, Mile 1800m)
+	Date(3, "Early", 11, 69),
+
+	// JBC Sprint: Year 3, November 1 @ Ooi (Dirt, Sprint 1200m)
+	Date(3, "Early", 11, 69),
+
+	// Queen Elizabeth II Cup: Year 3, November 1 @ Kyoto (Turf, Medium 2200m)
+	Date(3, "Early", 11, 69),
+
+	// Japan Cup: Year 3, November 2 @ Tokyo (Turf, Medium 2400m)
+	Date(3, "Late", 11, 70),
+
+	// Mile Championship: Year 3, November 2 @ Kyoto (Turf, Mile 1600m)
+	Date(3, "Late", 11, 70),
+
+	// Champions Cup: Year 3, November 2 @ Chukyo (Dirt, Mile 1800m)
+	Date(3, "Late", 11, 70),
+
+	// Arima Kinen: Year 3, December 2 @ Nakayama (Turf, Long 2500m)
+	Date(3, "Late", 12, 72),
+
+	// Tokyo Daishoten: Year 3, December 2 @ Ooi (Dirt, Medium 2000m)
+	Date(3, "Late", 12, 72),
+
 	)
-
 	data class Date(
 		val year: Int,
 		val phase: String,
