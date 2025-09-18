@@ -151,8 +151,40 @@ class Game(val myContext: Context) {
             return result
         }
     }
-//	private val speRaces = listOf( Date(99, "Late", 99, 99),
-private val speRaces = listOf(
+	//	private val speRaces = listOf( Date(99, "Late", 99, 99),
+	private val g1RaceImageKeys = listOf(
+		"arima_kinen",
+		"asahi_hai_futurity_stakes",
+		"champions_cup",
+		"february_stakes",
+		"hanshin_juvenile_fillies",
+		"hopeful_stakes",
+		"japan_cup",
+		"japan_dirt_derby",
+		"japanese_oaks",
+		"jbc_classic",
+		"jbc_ladies_classic",
+		"jbc_sprint",
+		"kikuka_sho",
+		"mile_championship",
+		"nhk_mile_cup",
+		"oka_sho",
+		"osaka_hai",
+		"queen_elizabeth_ii_cup",
+		"satsuki_sho",
+		"shuka_sho",
+		"sprinters_stakes",
+		"takamatsunomiya_kinen",
+		"takarazuka_kinen",
+		"teio_sho",
+		"tenno_sho_autumn",
+		"tenno_sho_spring",
+		"tokyo_daishoten",
+		"tokyo_yushun_japanese_derby",
+		"victoria_mile",
+		"yasuda_kinen"
+	)
+	private val speRaces = listOf(
 
 
 	// Junior Class (Year 1)
