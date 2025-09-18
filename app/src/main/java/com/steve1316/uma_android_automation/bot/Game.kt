@@ -151,21 +151,20 @@ class Game(val myContext: Context) {
             return result
         }
     }
+//	private val speRaces = listOf( Date(99, "Late", 99, 99),
+
 	private val speRaces = listOf(
 		// some other race for insufficient fans ,
 		//kikugasho
-//		Date(1, "Early", 11, 21),
+		//Date(1, "Early", 11, 21),
 
-//		//erica sho but sometimes doesnt run.
+		////erica sho but sometimes doesnt run.
 		//Date(1, "Early", 12, 23),
 
 		// Junior Class
 		// Hopeful Stakes: First Year, December 2
 		// From trainingRaceDateList: Date(1, "Late", 12, 24)
 		Date(1, "Late", 12, 24),
-
-//		//late feb Hanshin turn 2200 med
-//		Date(2, "Late", 2, 28),
 
 		// Classic Class
 		// Satsuki Sho: Second Year, April 1

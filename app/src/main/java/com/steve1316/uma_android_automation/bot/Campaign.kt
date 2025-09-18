@@ -73,7 +73,6 @@ open class Campaign(val game: Game) {
 						}
 					}
 				}
-
 				 if (game.encounteredRacingPopup || needToRace) {
 					game.printToLog("[INFO] Racing by default.", tag = tag)
 					if (!game.skipRacing && !handleRaceEvents()) {

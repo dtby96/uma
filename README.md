@@ -1,6 +1,6 @@
-cd# Uma Musume Automation For Android
+# Uma-Musume Automation For Android
 
-![GitHub commit activity](https://img.shields.io/github/commit-activity/m/JordanRO2/uma-android-automation?logo=GitHub) ![GitHub last commit](https://img.shields.io/github/last-commit/JordanRO2/uma-android-automation?logo=GitHub) ![GitHub issues](https://img.shields.io/github/issues/JordanRO2/uma-android-automation?logo=GitHub) ![GitHub pull requests](https://img.shields.io/github/issues-pr/JordanRO2/uma-android-automation?logo=GitHub) ![GitHub](https://img.shields.io/github/license/JordanRO2/uma-android-automation?logo=GitHub)
+![GitHub commit activity](https://img.shields.io/github/commit-activity/m/dtby96/uma?logo=GitHub) ![GitHub last commit](https://img.shields.io/github/last-commit/dtby96/uma?logo=GitHub) ![GitHub issues](https://img.shields.io/github/issues/dtby96/uma?logo=GitHub) ![GitHub pull requests](https://img.shields.io/github/issues-pr/dtby96/uma?logo=GitHub) ![GitHub](https://img.shields.io/github/license/dtby96/uma?logo=GitHub)
 
 > Fork of the original project by steve1316 with enhanced training logic and improved decision-making algorithms.
 
