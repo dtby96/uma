@@ -79,6 +79,13 @@ class SettingsFragment : PreferenceFragmentCompat() {
 						commit()
 					}
 				}
+				"enableScheduledExtraRaces" -> {
+					val enableScheduledExtraRacesPreference = findPreference<CheckBoxPreference>("enableScheduledExtraRaces")!!
+					sharedPreferences.edit {
+						putBoolean("enableScheduledExtraRaces", enableScheduledExtraRacesPreference.isChecked)
+						commit()
+					}
+				}
 				"disableRaceRetries" -> {
 					val disableRaceRetriesPreference = findPreference<CheckBoxPreference>("disableRaceRetries")!!
 
@@ -194,6 +201,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
 		// Grab the saved preferences from the previous time the user used the app.
 		val campaign: String = sharedPreferences.getString("campaign", "")!!
 		val strategy: String = sharedPreferences.getString("strategy", "")!!
+		val enableScheduledExtraRaces: Boolean = sharedPreferences.getBoolean("enableScheduledExtraRaces", false)
 		val enableFarmingFans: Boolean = sharedPreferences.getBoolean("enableFarmingFans", false)
 		val daysToRunExtraRaces: Int = sharedPreferences.getInt("daysToRunExtraRaces", 4)
 		val enableSkillPointCheck: Boolean = sharedPreferences.getBoolean("enableSkillPointCheck", false)
@@ -214,6 +222,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
 		// Get references to the Preference components.
 		val campaignListPreference = findPreference<ListPreference>("campaign")!!
 		val strategyListPreference = findPreference<ListPreference>("strategy")!!
+		val enableScheduledExtraRacesPreference = findPreference<CheckBoxPreference>("enableFarmingFans")!!
 		val enableFarmingFansPreference = findPreference<CheckBoxPreference>("enableFarmingFans")!!
 		val daysToRunExtraRacesPreference = findPreference<SeekBarPreference>("daysToRunExtraRaces")!!
 		val enableSkillPointCheckPreference = findPreference<CheckBoxPreference>("enableSkillPointCheck")!!
@@ -241,6 +250,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
 			strategyListPreference.summary = "Selected: ${strategyListPreference.value}"
 		}
 		enableFarmingFansPreference.isChecked = enableFarmingFans
+		enableScheduledExtraRacesPreference.isChecked = enableScheduledExtraRaces
 		daysToRunExtraRacesPreference.isEnabled = enableFarmingFansPreference.isChecked
 		daysToRunExtraRacesPreference.value = daysToRunExtraRaces
 		enableSkillPointCheckPreference.isChecked = enableSkillPointCheck

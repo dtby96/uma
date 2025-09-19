@@ -22,6 +22,7 @@ object SettingsPrinter {
 		// Main Settings
 		val campaign: String = sharedPreferences.getString("campaign", "")!!
 		val strategy: String = sharedPreferences.getString("strategy", "")!!
+		val enableScheduledExtraRaces = sharedPreferences.getBoolean("enableScheduledExtraRaces", false)
 		val enableFarmingFans = sharedPreferences.getBoolean("enableFarmingFans", false)
 		val daysToRunExtraRaces: Int = sharedPreferences.getInt("daysToRunExtraRaces", 4)
 		val enableSkillPointCheck: Boolean = sharedPreferences.getBoolean("enableSkillPointCheck", false)
@@ -97,6 +98,11 @@ object SettingsPrinter {
 		} else {
 			"⚠️ Please select one in the Select Campaign option"
 		}
+		val strategyString: String = if (strategy != "") {
+			"🎯 $strategy"
+		} else {
+			"⚠️ Please select one in the Select Race Strategy option"
+		}
 		
 		val characterString: String = if (selectAllCharacters) {
 			"👥 All Characters Selected"
@@ -146,6 +152,8 @@ object SettingsPrinter {
 		val settingsString = buildString {
 			appendLine("Campaign Selected: $campaignString")
 			appendLine()
+			appendLine("Race Strategy Selected: $strategyString")
+			appendLine()
 			appendLine("---------- Training Event Options ----------")
 			appendLine("Character Selected: $characterString")
 			appendLine("Support(s) Selected: $supportCardListString")
@@ -169,6 +177,7 @@ object SettingsPrinter {
 			appendLine("Minimum OCR Confidence: $ocrConfidence")
 			appendLine()
 			appendLine("---------- Racing Options ----------")
+			appendLine("Farming G1 races  ${if (enableScheduledExtraRaces) "✅" else "❌"}")
 			appendLine("Prioritize Farming Fans: ${if (enableFarmingFans) "✅" else "❌"}")
 			appendLine("Modulo Days to Farm Fans: ${if (enableFarmingFans) "📅 $daysToRunExtraRaces days" else "❌"}")
 			appendLine("Disable Race Retries: ${if (disableRaceRetries) "✅" else "❌"}")

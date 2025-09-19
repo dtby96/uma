@@ -45,6 +45,11 @@
             app:summary="Enables prioritizing farming fans via conducting extra races instead of focusing on training."
             app:title="Enable Prioritizing Farming Fans" />
 
+        <CheckBoxPreference
+            app:key="enableScheduledExtraRaces"
+            app:summary="Enables G1 races for medium n long  via conducting extra races when possible"
+            app:title="Enable G1 races" />
+
         <SeekBarPreference
             android:max="10"
             app:defaultValue="4"
