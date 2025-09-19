@@ -45,6 +45,13 @@ class SettingsFragment : PreferenceFragmentCompat() {
 						commit()
 					}
 				}
+				"enableScheduledExtraRaces" -> {
+					val enableScheduledExtraRacesPreference = findPreference<CheckBoxPreference>("enableScheduledExtraRaces")!!
+					sharedPreferences.edit {
+						putBoolean("enableScheduledExtraRaces", enableScheduledExtraRacesPreference.isChecked)
+						commit()
+					}
+				}
 				"daysToRunExtraRaces" -> {
 					val daysToRunExtraRacesPreference = findPreference<SeekBarPreference>("daysToRunExtraRaces")!!
 					
@@ -79,13 +86,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
 						commit()
 					}
 				}
-				"enableScheduledExtraRaces" -> {
-					val enableScheduledExtraRacesPreference = findPreference<CheckBoxPreference>("enableScheduledExtraRaces")!!
-					sharedPreferences.edit {
-						putBoolean("enableScheduledExtraRaces", enableScheduledExtraRacesPreference.isChecked)
-						commit()
-					}
-				}
+
 				"disableRaceRetries" -> {
 					val disableRaceRetriesPreference = findPreference<CheckBoxPreference>("disableRaceRetries")!!
 
@@ -222,7 +223,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
 		// Get references to the Preference components.
 		val campaignListPreference = findPreference<ListPreference>("campaign")!!
 		val strategyListPreference = findPreference<ListPreference>("strategy")!!
-		val enableScheduledExtraRacesPreference = findPreference<CheckBoxPreference>("enableFarmingFans")!!
+		val enableScheduledExtraRacesPreference = findPreference<CheckBoxPreference>("enableExtraScheduledRaces")!!
 		val enableFarmingFansPreference = findPreference<CheckBoxPreference>("enableFarmingFans")!!
 		val daysToRunExtraRacesPreference = findPreference<SeekBarPreference>("daysToRunExtraRaces")!!
 		val enableSkillPointCheckPreference = findPreference<CheckBoxPreference>("enableSkillPointCheck")!!

@@ -152,7 +152,6 @@ class Game(val myContext: Context) {
             return result
         }
     }
-	//	private val speRaces = listOf( Date(99, "Late", 99, 99),
 	private val g1RaceImageKeys = listOf(
 		"arima_kinen",
 		"asahi_hai_futurity_stakes",
@@ -189,8 +188,6 @@ class Game(val myContext: Context) {
 	private val speRaces : List<Date>
 		get() = if (enableScheduledExtraRaces) {
 			listOf(
-
-
 				// Junior Class (Year 1)
 				// Asahi Hai Futurity Stakes: Year 1, December 1 @ Hanshin (Dirt, Mile 1600m)
 				//Date(1, "Early", 12, 23),
@@ -222,7 +219,7 @@ class Game(val myContext: Context) {
 				//Date(2, "Early", 6, 35),
 
 				// Takarazuka Kinen: Year 2, June 2 @ Hanshin (Turf, Medium 2200m)
-				Date(2, "Late", 6, 36),
+				//Date(2, "Late", 6, 36),
 
 				// Japan Dirt Derby: Year 2, July 1 @ Ooi (Dirt, Medium 2000m)
 				//Date(2, "Early", 7, 37),
