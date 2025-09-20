@@ -2278,9 +2278,9 @@ class Game(val myContext: Context) {
 		} else if (currentDate.phase != "Pre-Debut" && findAndTapImage("race_select_extra", tries = 1, region = imageUtils.regionBottomHalf)) {
 			printToLog("\n[RACE] Starting process for handling a extra race.")
 
-			// If there is a popup warning about repeating races 3+ times, stop the process and do something else other than racing.
+			// 3+ consecutive race warning
 			if (imageUtils.findImage("race_repeat_warning").first != null) {
-				if (!enableForceRacing && !enableScheduledExtraRaces) {
+				if (!enableForceRacing) {
 					raceRepeatWarningCheck = true
 					printToLog("\n[RACE] Closing popup warning of doing more than 3+ races and setting flag to prevent racing for now. Canceling the racing process and doing something else.")
 					findAndTapImage("cancel", region = imageUtils.regionBottomHalf)
@@ -2291,225 +2291,190 @@ class Game(val myContext: Context) {
 				}
 			}
 
-			// There is a extra race.
-			// Swipe up the list to get to the top and then select the first option.
+			// Make sure the list is present and grab a stable anchor
 			val statusLocation = imageUtils.findImage("race_status").first
 			if (statusLocation == null) {
 				printToLog("[ERROR] Unable to determine existence of list of extra races. Canceling the racing process and doing something else.", isError = true)
 				return false
 			}
-			gestureUtils.swipe(statusLocation.x.toFloat(), statusLocation.y.toFloat() + 300, statusLocation.x.toFloat(), statusLocation.y.toFloat() + 888)
-			wait(1.0)
 
-			// extra scroll: Only on dates where we care about the 3rd row (e.g., Japan Cup / Satsuki)
-			if (currentDate in extraScrollDates) {
-				val status = imageUtils.findImage("race_status").first
-				if (status != null) {
-					// Count/positions BEFORE swipe (to verify movement)
-					val beforeMatches = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf)
-					val beforeY = beforeMatches.map { it.y }
-
-					// Long upward swipe (finger up => content scrolls down)
-					printToLog("[DEBUG] Swiping  test: oldX=${status.x.toFloat()}, oldY=${status.y.toFloat() + 1000}, newX=${status.x.toFloat()},newY=${status.y.toFloat() + 300}")
-					gestureUtils.swipe(
-						status.x.toFloat(),
-						status.y.toFloat() + 300,   // start lower
-						status.x.toFloat(),
-						status.y.toFloat(),
-						500// end higher
-					)
-
-					wait(1.0)
-
-					// Check AFTER swipe
-					val afterMatches = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf)
-					val afterY = afterMatches.map { it.y }
-					printToLog("[DEBUG] Swipe test: before=${beforeY}, after=${afterY}")
-
-					// If nothing changed, retry with an even longer swipe once
-					if (afterY == beforeY) {
-						wait(1.0)
-						val afterMatches2 = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf)
-						val afterY2 = afterMatches2.map { it.y }
-						gestureUtils.swipe(
-							status.x.toFloat(),
-							status.y.toFloat() + 300,   // start lower
-							status.x.toFloat(),
-							status.y.toFloat(),
-							500// end higher
-						)
-						printToLog("[DEBUG] Swipe retry: before=${beforeY}, after=${afterY2}")
-					}
-
-					// Move the highlight down once so it's on the newly revealed 3rd row (if present)
-					val cur = imageUtils.findImage("race_extra_selection", region = imageUtils.regionBottomHalf).first
-					if (cur != null) {
-						if (imageUtils.isTablet) {
-							tap(
-								imageUtils.relX(cur.x, (-100 * 1.36).toInt()).toDouble(),
-								imageUtils.relY(cur.y,  (150 * 1.50).toInt()).toDouble(),
-								"race_extra_selection",
-								ignoreWaiting = true
-							)
-						} else {
-							tap(
-								imageUtils.relX(cur.x, -100).toDouble(),
-								imageUtils.relY(cur.y, 150).toDouble(),
-								"race_extra_selection",
-								ignoreWaiting = true
-							)
-						}
-						wait(0.5)
-					}
-				}
-			}
-			//Extra
-			// Now determine the best extra race with the following parameters: highest fans and double star prediction.
-			// First find the fans of only the extra races on the screen that match the double star prediction. Read only 3 extra races.
-			var count = 0
-			val maxCount = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf).size
-			if (maxCount == 0) {
-				printToLog("[WARNING] Was unable to find any extra races to select. Canceling the racing process and doing something else.", isError = true)
-				return false
-			} else {
-				printToLog("[RACE] There are $maxCount extra race options currently on screen.")
-			}
-			val listOfFans = mutableListOf<Int>()
-			val extraRaceLocation = mutableListOf<Point>()
-			val doublePredictionLocations = imageUtils.findAll("race_extra_double_prediction")
-
-			if (doublePredictionLocations.size == 1 ) {
-				printToLog("[RACE] There is only one race with double predictions so selecting that one.")
-				tap(
-					doublePredictionLocations[0].x,
-					doublePredictionLocations[0].y,
-					"race_extra_double_prediction",
-					ignoreWaiting = true
-				)
-			} else {
-				val (sourceBitmap, templateBitmap) = imageUtils.getBitmaps("race_extra_double_prediction")
-				val listOfRaces: ArrayList<ImageUtils.RaceDetails> = arrayListOf()
-				while (count < maxCount) {
-					// Save the location of the selected extra race.
-					val selectedExtraRace = imageUtils.findImage("race_extra_selection", region = imageUtils.regionBottomHalf).first
-					if (selectedExtraRace == null) {
-						printToLog("[ERROR] Unable to find the location of the selected extra race. Canceling the racing process and doing something else.", isError = true)
-						break
-					}
-					extraRaceLocation.add(selectedExtraRace)
-
-					// Determine its fan gain and save it.
-					val raceDetails: ImageUtils.RaceDetails = imageUtils.determineExtraRaceFans(extraRaceLocation[count], sourceBitmap, templateBitmap!!, forceRacing = enableForceRacing)
-					listOfRaces.add(raceDetails)
-					if (count == 0 && raceDetails.fans == -1) {
-						// If the fans were unable to be fetched or the race does not have double predictions for the first attempt, skip racing altogether.
-						listOfFans.add(raceDetails.fans)
-						break
-					}
-					listOfFans.add(raceDetails.fans)
-
-					// Select the next extra race.
-					if (count + 1 < maxCount) {
-						if (imageUtils.isTablet) {
-							tap(
-								imageUtils.relX(extraRaceLocation[count].x, (-100 * 1.36).toInt()).toDouble(),
-								imageUtils.relY(extraRaceLocation[count].y, (150 * 1.50).toInt()).toDouble(),
-								"race_extra_selection",
-								ignoreWaiting = true
-							)
-						} else {
-							tap(
-								imageUtils.relX(extraRaceLocation[count].x, -100).toDouble(),
-								imageUtils.relY(extraRaceLocation[count].y, 150).toDouble(),
-								"race_extra_selection",
-								ignoreWaiting = true
-							)
-						}
-					}
-					wait(0.5)
-					count++
-				}
-				val fansList = listOfRaces.joinToString(", ") { it.fans.toString() }
-				printToLog("[RACE] Number of fans detected for each extra race are: $fansList")
-
-				// Next determine the maximum fans and select the extra race.
-				val maxFans: Int? = listOfFans.maxOrNull()
-				if (maxFans != null) {
-					if (maxFans == -1) {
-						printToLog("[WARNING] Max fans was returned as -1. Canceling the racing process and doing something else.")
-						return false
-					}
-
-					// Get the index of the maximum fans or the one with the double predictions if available when force racing is enabled.
-					val index = if (!enableForceRacing) {
-						listOfFans.indexOf(maxFans)
-					} else {
-						// When force racing is enabled, prioritize races with double predictions.
-						val doublePredictionIndex = listOfRaces.indexOfFirst { it.hasDoublePredictions }
-						if (doublePredictionIndex != -1) {
-							printToLog("[RACE] Force racing enabled - selecting race with double predictions.")
-							doublePredictionIndex
-						} else {
-							// Fall back to the race with maximum fans if no double predictions found
-							printToLog("[RACE] Force racing enabled but no double predictions found - falling back to race with maximum fans.")
-							listOfFans.indexOf(maxFans)
-						}
-					}
-
-					printToLog("[RACE] Selecting the extra race at option #${index + 1}.")
-
-					// Select the extra race that matches the double star prediction and the most fan gain.
+			// Helper lambdas (use only existing utilities)
+			fun selectNextBelow(from: Point) {
+				if (imageUtils.isTablet) {
 					tap(
-						extraRaceLocation[index].x - imageUtils.relWidth((100 * 1.36).toInt()),
-						extraRaceLocation[index].y - imageUtils.relHeight(70),
-						"race_extra_selection",
-						ignoreWaiting = true
-					)
-				} else if (extraRaceLocation.isNotEmpty()) {
-					// If no maximum is determined, select the very first extra race.
-					printToLog("[RACE] Selecting the first extra race on the list by default.")
-					tap(
-						extraRaceLocation[0].x - imageUtils.relWidth((100 * 1.36).toInt()),
-						extraRaceLocation[0].y - imageUtils.relHeight(70),
+						imageUtils.relX(from.x, (-100 * 1.36).toInt()).toDouble(),
+						imageUtils.relY(from.y, (150 * 1.50).toInt()).toDouble(),
 						"race_extra_selection",
 						ignoreWaiting = true
 					)
 				} else {
-					printToLog("[WARNING] No extra races detected and thus no fan maximums were calculated. Canceling the racing process and doing something else.")
+					tap(
+						imageUtils.relX(from.x, -100).toDouble(),
+						imageUtils.relY(from.y, 150).toDouble(),
+						"race_extra_selection",
+						ignoreWaiting = true
+					)
+				}
+				wait(0.5)
+			}
+			// Call this right after each scroll to force the highlight onto a full, visible row
+			fun forceSelectFirstVisible() {
+				val spots = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf)
+				if (spots.isEmpty()) return
+				val first = spots.minByOrNull { it.y }!!     // top-most fans label = row 1 on this screen
+				tap(
+					first.x - imageUtils.relWidth((100 * 1.36).toInt()),
+					first.y - imageUtils.relHeight(70),
+					"race_extra_selection",
+					ignoreWaiting = true
+				)
+				wait(0.3)
+				// verify highlight is on the same band; if not, tap once more a bit higher to snap
+				imageUtils.findImage("race_extra_selection", region = imageUtils.regionBottomHalf).first?.let { sel ->
+					if (kotlin.math.abs(sel.y - first.y) > imageUtils.relHeight(80)) {
+						tap(
+							first.x - imageUtils.relWidth((100 * 1.36).toInt()),
+							first.y - imageUtils.relHeight(110),
+							"race_extra_selection",
+							ignoreWaiting = true
+						)
+						wait(0.25)
+					}
+				}
+			}
+			// 2) Small helper: (re)select visible row 0 or 1 on *current* screen using fans anchors
+			fun selectVisibleRow(index: Int): Boolean {
+				val fansAnchors = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf).sortedBy { it.y }
+				if (fansAnchors.size < index + 1) return false
+				val anchor = fansAnchors[index]
+				val targetX = (anchor.x - imageUtils.relWidth(120)).toDouble()
+				tap(targetX, anchor.y, "reselect_row_${index+1}", ignoreWaiting = true)
+				wait(0.2)
+				return true
+			}
+
+			data class Candidate(
+				val fans: Int,
+				val hasDouble: Boolean,
+				val location: Point,
+				val onThirdScreen: Boolean,
+				val rowIndex: Int // 0=first row, 1=second row on whichever screen you’re on
+			)
+
+			val candidatesTop = mutableListOf<Candidate>()
+			val candidatesBottom = mutableListOf<Candidate>() // row 3 (after scroll)
+
+			// Always start from the top of the list (rows 1–2)
+			// swipe: pull list to top using the same direction you already use elsewhere
+			gestureUtils.swipe(
+				statusLocation.x.toFloat(), statusLocation.y.toFloat() ,
+				statusLocation.x.toFloat(), statusLocation.y.toFloat() + 350f
+			)
+			wait(1.0)
+			forceSelectFirstVisible()
+			// Scan visible (rows 1–2)
+			run {
+				val fansSpots = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf)
+				val maxCount = fansSpots.size
+				if (maxCount == 0) {
+					printToLog("[WARNING] Was unable to find any extra races to select. Canceling the racing process and doing something else.", isError = true)
 					return false
+				} else {
+					printToLog("[RACE] There are $maxCount extra race options currently on screen.")
 				}
+
+				val (srcBmp, tplBmp) = imageUtils.getBitmaps("race_extra_double_prediction")
+				var count = 0
+				while (count < maxCount) {
+					val selected = imageUtils.findImage("race_extra_selection", region = imageUtils.regionBottomHalf).first
+					if (selected == null) {
+						printToLog("[ERROR] Unable to find the location of the selected extra race. Canceling the racing process and doing something else.", isError = true)
+						break
+					}
+
+					val det = imageUtils.determineExtraRaceFans(selected, srcBmp, tplBmp!!, forceRacing = enableForceRacing)
+					candidatesTop += Candidate(det.fans, det.hasDoublePredictions, selected, onThirdScreen = false , rowIndex = count)
+
+					if (count + 1 < maxCount) selectNextBelow(selected)
+					count++
+				}
+
+				val fansList = candidatesTop.joinToString(", ") { it.fans.toString() }
+				printToLog("[RACE] Fans detected (top screen): $fansList")
 			}
 
-			// Confirm the selection and the resultant popup and then wait for the game to load.
-			findAndTapImage("race_confirm", tries = 30, region = imageUtils.regionBottomHalf)
-			findAndTapImage("race_confirm", tries = 10, region = imageUtils.regionBottomHalf)
+			// Scroll down to reveal row 3, then scan it
+			gestureUtils.swipe(
+				statusLocation.x.toFloat(), statusLocation.y.toFloat() + 350f,
+				statusLocation.x.toFloat(), statusLocation.y.toFloat()
+			)
 			wait(2.0)
+			forceSelectFirstVisible()
 
-
-			// Select the preferred race strategy if it is not already selected.
-			printToLog("[DEBUG] 3rd inside handleraceevents strategy selection")
-			if (!strategySelected) {
-				if (strategyImageName != "default") {
-					findAndTapImage("race_change_strategy", tries = 10, region = imageUtils.regionBottomHalf)
-					findAndTapImage(strategyImageName + "_select", tries = 10, region = imageUtils.regionBottomHalf)
-					findAndTapImage("confirm", tries = 10, region = imageUtils.regionBottomHalf)
-					wait(1.0)
+			run {
+				val fansSpots = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf)
+				val maxCount = fansSpots.size
+				if (maxCount > 0) {
+					val (srcBmp, tplBmp) = imageUtils.getBitmaps("race_extra_double_prediction")
+					// We only need the first row shown on this “third-row” screen
+					val selected = imageUtils.findImage("race_extra_selection", region = imageUtils.regionBottomHalf).first
+					if (selected != null) {
+						val det = imageUtils.determineExtraRaceFans(selected, srcBmp, tplBmp!!, forceRacing = enableForceRacing)
+						candidatesBottom += Candidate(det.fans, det.hasDoublePredictions, selected, onThirdScreen = true , rowIndex = 2)
+						printToLog("[RACE] Fans detected (third row screen): ${det.fans}")
+					}
 				}
-				strategySelected = true;
-			}
-			// Skip the race if possible, otherwise run it manually.
-			val resultCheck: Boolean = if (imageUtils.findImage("race_skip_locked", tries = 5, region = imageUtils.regionBottomHalf).first == null) {
-				skipRace()
-			} else {
-				manualRace()
 			}
 
-			finishRace(resultCheck, isExtra = true)
+			// Decide the winner (double prediction first, then highest fans)
+			val all = (candidatesTop + candidatesBottom)
+				.sortedWith(compareByDescending<Candidate> { it.hasDouble }.thenByDescending { it.fans })
 
-			printToLog("[RACE] Racing process for Extra Race is completed.")
+			if (all.isEmpty()) {
+				printToLog("[WARNING] No extra races detected and thus no fan maximums were calculated. Canceling the racing process and doing something else.")
+				return false
+			}
+
+			val best = all.first()
+			if (best.fans == -1 && !best.hasDouble) {
+				printToLog("[WARNING] Best option has -1 fans and no double predictions. Canceling the racing process and doing something else.")
+				return false
+			}
+
+			// If the winner was on the top screen, scroll back up before tapping its saved location
+			if (!best.onThirdScreen) {
+				printToLog("Swiping up , first 2 had better fans and prediction")
+				gestureUtils.swipe(
+					statusLocation.x.toFloat(), statusLocation.y.toFloat() + 300f,
+					statusLocation.x.toFloat(), statusLocation.y.toFloat() + 888f
+				)
+				wait(2.0)
+				forceSelectFirstVisible()
+				if(best.rowIndex == 1) {
+					val firstRow = imageUtils.findImage(
+						"race_extra_selection",
+						region = imageUtils.regionBottomHalf
+					).first!!
+					selectNextBelow(firstRow)
+				}
+			}
+
+			// Tap the saved location using your existing offset tap logic
+			printToLog("[RACE] Selected extra race -> Double:${best.hasDouble}  Fans:${best.fans}  onThirdScreen:${best.onThirdScreen}")
+			// Try to proceed with the selected extra race instead of falling through to Back.
+			val proceeded =
+				findAndTapImage("race_confirm", tries = 2, region = imageUtils.regionBottomHalf)
+
+			if (!proceeded) {
+				printToLog("[RACE] Could not find a proceed button (race/race_start/ok). Falling back to Back.")
+				findAndTapImage("back", region = imageUtils.regionBottomHalf)
+				return false
+			}
+
+			// Give the UI a moment to move to the next screen; the outer flow continues the race.
+			wait(0.8)
 			return true
 		}
-
 		return false
 	}
 
