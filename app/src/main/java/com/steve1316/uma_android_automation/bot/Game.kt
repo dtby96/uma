@@ -190,8 +190,6 @@ class Game(val myContext: Context) {
 			listOf(
 
 				// ── Year 1 ─────────────────────────────────────────────────────────────
-				//force run race to ensure 4500 fans before apr
-				Date(1, "Early", 11, 21),
 				// Year 1 • Early Dec (12/23):
 				//   - Asahi Hai Futurity Stakes: Turf, Mile 1600m @ Hanshin
 				//   - Hanshin Juvenile Fillies: Turf, Mile 1600m @ Hanshin
@@ -2280,7 +2278,7 @@ class Game(val myContext: Context) {
 
 			// 3+ consecutive race warning
 			if (imageUtils.findImage("race_repeat_warning").first != null) {
-				if (!enableForceRacing) {
+				if (!enableForceRacing && !enableScheduledExtraRaces) {
 					raceRepeatWarningCheck = true
 					printToLog("\n[RACE] Closing popup warning of doing more than 3+ races and setting flag to prevent racing for now. Canceling the racing process and doing something else.")
 					findAndTapImage("cancel", region = imageUtils.regionBottomHalf)
