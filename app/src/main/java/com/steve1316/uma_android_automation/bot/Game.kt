@@ -2235,7 +2235,7 @@ class Game(val myContext: Context) {
 			if (enableStopOnMandatoryRace) {
 				detectedMandatoryRaceCheck = true
 				return false
-			} else if (enableForceRacing) {
+			} else if (enableForceRacing ||enableScheduledExtraRaces) {
 				findAndTapImage("ok", tries = 1, region = imageUtils.regionMiddle)
 				wait(1.0)
 			}
