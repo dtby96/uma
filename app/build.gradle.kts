@@ -103,6 +103,11 @@ dependencies {
     // AppUpdater for notifying users when there is a new update available.
     implementation(libs.appUpdater)
 
+    // Modern UI components
+    implementation(libs.lottie)
+    implementation(libs.mpAndroidChart)
+    implementation(libs.coil)
+
     // Test dependencies
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito:mockito-core:5.5.0")
