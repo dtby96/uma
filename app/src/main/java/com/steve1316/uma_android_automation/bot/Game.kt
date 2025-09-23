@@ -2229,7 +2229,8 @@ class Game(val myContext: Context) {
 		// First, check if there is a mandatory or a extra race available. If so, head into the Race Selection screen.
 		// Note: If there is a mandatory race, the bot would be on the Home screen.
 		// Otherwise, it would have found itself at the Race Selection screen already (by way of the insufficient fans popup).
-		if (findAndTapImage("race_select_mandatory", tries = 1, region = imageUtils.regionBottomHalf)) {
+		if (findAndTapImage("race_select_mandatory", tries = 1, region = imageUtils.regionBottomHalf))
+		{
 			printToLog("\n[RACE] Starting process for handling a mandatory race.")
 
 			if (enableStopOnMandatoryRace) {
@@ -2252,14 +2253,39 @@ class Game(val myContext: Context) {
 			waitForLoading()
 			// Select the preferred race strategy if it is not already selected.
 			printToLog("[DEBUG] 2 inside handleraceevents strategy selection")
-			if (!strategySelected) {
-				if (strategyImageName != "default") {
-					findAndTapImage("race_change_strategy", tries = 10, region = imageUtils.regionBottomHalf)
-					findAndTapImage(strategyImageName + "_select", tries = 10, region = imageUtils.regionBottomHalf)
-					findAndTapImage("confirm", tries = 10, region = imageUtils.regionBottomHalf)
-					wait(1.0)
+			if (!strategySelected)
+			{
+				// Force Front during Pre-Debut, otherwise use whatever you already chose.
+				val isPreDebut = currentDate.phase == "Pre-Debut"
+				val chosen = if (isPreDebut) "strategy_front" else strategyImageName
+				printToLog("[DEBUG] Strategy decision → isPreDebut=$isPreDebut, strategyImageName=$strategyImageName, chosen=$chosen")
+				if (chosen != "default" && chosen.isNotEmpty())
+				{
+					// Open the strategy picker
+					val opened = findAndTapImage("race_change_strategy", tries = 10, region = imageUtils.regionBottomHalf)
+					if (opened) {
+						//pick strategyName_select
+						val picked =
+							findAndTapImage("${chosen}_select", tries = 6, region = imageUtils.regionBottomHalf)
+
+						// Confirm (your existing key)
+						if (picked) {
+							findAndTapImage("confirm", tries = 10, region = imageUtils.regionBottomHalf)
+							wait(1.0)
+							if (isPreDebut) {
+								printToLog("[RACE] Pre-Debut detected → forcing Front strategy.")
+							}else
+							{
+								//once pre debut is over , default to what was chosen in race strategy
+								strategySelected = true
+							}
+						} else {
+							printToLog("[RACE] Could not find the strategy button for \"$chosen\"; leaving default.", isError = true)
+						}
+					} else {
+						printToLog("[RACE] Could not open strategy picker.", isError = true)
+					}
 				}
-				strategySelected = true;
 			}
 
 			// Skip the race if possible, otherwise run it manually.
@@ -2273,7 +2299,9 @@ class Game(val myContext: Context) {
 
 			printToLog("[RACE] Racing process for Mandatory Race is completed.")
 			return true
-		} else if (currentDate.phase != "Pre-Debut" && findAndTapImage("race_select_extra", tries = 1, region = imageUtils.regionBottomHalf)) {
+		}
+		else if (currentDate.phase != "Pre-Debut" && findAndTapImage("race_select_extra", tries = 1, region = imageUtils.regionBottomHalf))
+		{
 			printToLog("\n[RACE] Starting process for handling a extra race.")
 
 			// 3+ consecutive race warning
@@ -2482,15 +2510,40 @@ class Game(val myContext: Context) {
 	fun handleStandaloneRace() {
 		printToLog("\n[RACE] Starting Standalone Racing process...")
 
-		printToLog("[DEBUG] 1st")
-		if (!strategySelected) {
-			if (strategyImageName != "default") {
-				findAndTapImage("race_change_strategy", tries = 10, region = imageUtils.regionBottomHalf)
-				findAndTapImage(strategyImageName + "_select", tries = 10, region = imageUtils.regionBottomHalf)
-				findAndTapImage("confirm", tries = 10, region = imageUtils.regionBottomHalf)
-				wait(1.0)
+		printToLog("[DEBUG] 1st race strategy selection")
+		if (!strategySelected)
+		{
+			// Force Front during Pre-Debut, otherwise use whatever you already chose.
+			val isPreDebut = currentDate.phase == "Pre-Debut"
+			val chosen = if (isPreDebut) "strategy_front" else strategyImageName
+			printToLog("[DEBUG] standalone Strategy decision → isPreDebut=$isPreDebut, strategyImageName=$strategyImageName, chosen=$chosen")
+			if (chosen != "default" && chosen.isNotEmpty())
+			{
+				// Open the strategy picker
+				val opened = findAndTapImage("race_change_strategy", tries = 10, region = imageUtils.regionBottomHalf)
+				if (opened) {
+					//pick strategyName_select
+					val picked =
+						findAndTapImage("${chosen}_select", tries = 6, region = imageUtils.regionBottomHalf)
+
+					// Confirm (your existing key)
+					if (picked) {
+						findAndTapImage("confirm", tries = 10, region = imageUtils.regionBottomHalf)
+						wait(1.0)
+						if (isPreDebut) {
+							printToLog("[RACE] Pre-Debut detected → forcing Front strategy.")
+						}else
+						{
+							//once pre debut is over , default to what was chosen in race strategy
+							strategySelected = true
+						}
+					} else {
+						printToLog("[RACE] Could not find the strategy button for \"$chosen\"; leaving default.", isError = true)
+					}
+				} else {
+					printToLog("[RACE] Could not open strategy picker.", isError = true)
+				}
 			}
-			strategySelected = true;
 		}
 
 		// Skip the race if possible, otherwise run it manually.
