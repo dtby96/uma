@@ -2162,94 +2162,108 @@ class Game(val myContext: Context) {
 		 * @return A normalized score (0-100) representing stat efficiency.
 		 */
 		fun calculateStatEfficiencyScore(training: Training, target: IntArray): Double {
-			var score = 100.0
+			// Algorithm: Weighted Normalized Utility Function with Diminishing Returns
+			// This algorithm balances multiple objectives:
+			// 1. Maximize total stat gains (efficiency)
+			// 2. Prioritize stats with larger deficits (urgency)
+			// 3. Respect stat prioritization (strategy)
+			// 4. Apply diminishing returns as stats approach targets
+
+			var totalScore = 0.0
+			val totalStatGain = training.statGains.sum()
+
+			// Base score from total stat gain to ensure high-value trainings are preferred
+			val efficiencyBase = totalStatGain * 2.0
 
 			for ((index, stat) in trainings.withIndex()) {
 				val currentStat = currentStatsMap.getOrDefault(stat, 0)
 				val targetStat = target.getOrElse(index) { 0 }
 				val statGain = training.statGains.getOrElse(index) { 0 }
-				val deficit = targetStat - currentStat
 
-				if (statGain > 0) {
-					// Priority weight based on the current state of the game.
+				if (statGain > 0 && targetStat > 0) {
+					// Calculate normalized progress (0-1 scale)
+					val currentProgress = (currentStat.toDouble() / targetStat).coerceIn(0.0, 1.0)
+					val newProgress = ((currentStat + statGain).toDouble() / targetStat).coerceIn(0.0, 1.0)
+					val progressGain = newProgress - currentProgress
+
+					// Marginal utility with diminishing returns (logarithmic utility function)
+					// This naturally balances between high-deficit and high-gain trainings
+					val marginalUtility = if (currentProgress < 1.0) {
+						// Using log(1 + x) to avoid log(0) and provide smooth diminishing returns
+						val currentUtility = -Math.log(1.01 - currentProgress)  // Approaches infinity as we near completion
+						val newUtility = -Math.log(1.01 - newProgress)
+						(newUtility - currentUtility) * 100  // Scale up for meaningful scores
+					} else {
+						// Over target - minimal value
+						progressGain * 10
+					}
+
+					// Priority weighting based on stat importance
 					val priorityIndex = statPrioritization.indexOf(stat)
-					
-					// Apply deficit-based multiplier according to the training guide
-					val deficitMultiplier = when {
-						deficit > 300 -> 3.0  // Critical priority
-						deficit > 200 -> 2.5  // High priority
-						deficit > 100 -> 2.0  // Moderate priority
-						deficit > 50 -> 1.5   // Low priority
-						deficit > 0 -> 1.1    // Maintenance
-						else -> 0.5          // Surplus (diminishing returns)
-					}
-					
-					val priorityWeight = if (priorityIndex != -1) {
-						// Enhanced priority weighting for top 3 stats
-						val top3Bonus = when (priorityIndex) {
-							0 -> 2.0
-							1 -> 1.5
-							2 -> 1.1
-							else -> 1.0
-						}
-						
-						val baseWeight = when {
-							currentDate.year == 1 || currentDate.phase == "Pre-Debut" -> 1.0 + (0.1 * (statPrioritization.size - priorityIndex)) / statPrioritization.size
-							currentDate.year == 2 -> 1.0 + (0.3 * (statPrioritization.size - priorityIndex)) / statPrioritization.size
-							currentDate.year == 3 -> 1.0 + (0.5 * (statPrioritization.size - priorityIndex)) / statPrioritization.size
-							else -> 1.0
-						}
-
-						baseWeight * top3Bonus * deficitMultiplier
-					} else {
-						// Non-prioritized stats still get deficit multiplier but reduced
-						deficitMultiplier * 0.5
+					val priorityMultiplier = when (priorityIndex) {
+						0 -> 3.0   // Highest priority stat
+						1 -> 2.5   // Second priority
+						2 -> 2.0   // Third priority
+						3 -> 1.5   // Fourth priority
+						4 -> 1.0   // Fifth priority
+						else -> 0.7  // Non-prioritized
 					}
 
-					Log.d(tag, "[DEBUG] Priority Weight: $priorityWeight, Deficit: $deficit, Deficit Multiplier: $deficitMultiplier")
-
-					// Calculate efficiency based on remaining gap between the current stat and the target.
-					var efficiency = if (deficit > 0) {
-						// Stat is below target, apply deficit multiplier
-						Log.d(tag, "[DEBUG] Giving bonus for remaining efficiency.")
-						val gapRatio = deficit.toDouble() / targetStat
-						val targetBonus = when {
-							gapRatio > 0.1 -> 1.5
-							gapRatio > 0.05 -> 1.25
-							else -> 1.1
-						}
-						targetBonus + (statGain.toDouble() / deficit).coerceAtMost(1.0)
-					} else {
-						// Stat is above target, give a diminishing bonus based on how much over.
-						Log.d(tag, "[DEBUG] Stat is above target so giving diminishing bonus.")
-						val overageRatio = (statGain.toDouble() / (-deficit + statGain))
-						1.0 + overageRatio * 0.5 // Reduced bonus for over-target training
+					// Year-based adjustment (early game vs late game focus)
+					val yearMultiplier = when (currentDate.year) {
+						1 -> 0.8  // Year 1: Less stat focus, more friendship focus
+						2 -> 1.0  // Year 2: Balanced
+						3 -> 1.2  // Year 3: Heavy stat focus
+						else -> 1.0
 					}
 
-					Log.d(tag, "[DEBUG] Efficiency: $efficiency")
+					// Calculate stat-specific score
+					val statScore = marginalUtility * priorityMultiplier * yearMultiplier
 
-					// Apply Spark stat target focus when enabled.
-					if (focusOnSparkStatTarget) {
+					// Special handling for Spark stats (Speed, Stamina, Power to 600)
+					if (focusOnSparkStatTarget && (stat == "Speed" || stat == "Stamina" || stat == "Power")) {
 						val sparkTarget = 600
-						val sparkRemaining = sparkTarget - currentStat
-						
-						// Check if this is a Spark stat (Speed, Stamina, Power) and it's below 600.
-						if ((stat == "Speed" || stat == "Stamina" || stat == "Power") && sparkRemaining > 0) {
-							// Boost efficiency for Spark stats that are below 600.
-							val sparkEfficiency = 2.0 + (statGain.toDouble() / sparkRemaining).coerceAtMost(1.0)
-							// Use the higher of the two efficiencies (original target vs spark target).
-							efficiency = maxOf(efficiency, sparkEfficiency)
+						if (currentStat < sparkTarget) {
+							val sparkProgress = currentStat.toDouble() / sparkTarget
+							val sparkNewProgress = (currentStat + statGain).toDouble() / sparkTarget
+							val sparkUtility = if (sparkProgress < 1.0) {
+								val currentSparkUtility = -Math.log(1.01 - sparkProgress)
+								val newSparkUtility = -Math.log(1.01 - Math.min(sparkNewProgress, 1.0))
+								(newSparkUtility - currentSparkUtility) * 100
+							} else {
+								0.0
+							}
+							// Use the higher utility between normal target and spark target
+							totalScore += Math.max(statScore, sparkUtility * priorityMultiplier * yearMultiplier)
+						} else {
+							totalScore += statScore
 						}
+					} else {
+						totalScore += statScore
 					}
 
-					// Apply deficit multiplier to the scoring
-					score += statGain * 2
-					score += (statGain * 2) * (efficiency * priorityWeight * deficitMultiplier)
-					Log.d(tag, "[DEBUG] Score: $score")
+					Log.d(tag, "[DEBUG] $stat: Gain=$statGain, Progress=${(currentProgress*100).toInt()}%→${(newProgress*100).toInt()}%, Utility=$marginalUtility, Priority=$priorityMultiplier")
 				}
 			}
 
-			return score.coerceAtMost(1000.0)
+			// Combine efficiency base with utility scores
+			// This ensures that a training giving 50 points to a needed stat beats
+			// a training giving 30 points to a slightly more needed stat
+			val finalScore = efficiencyBase + totalScore
+
+			// Apply penalty if all stats are near completion to encourage other activities
+			val allStatsNearComplete = trainings.all { stat ->
+				val current = currentStatsMap.getOrDefault(stat, 0)
+				val targetValue = target.getOrElse(trainings.indexOf(stat)) { 0 }
+				targetValue == 0 || (current.toDouble() / targetValue) > 0.9
+			}
+
+			if (allStatsNearComplete) {
+				return finalScore * 0.5  // Reduce score to encourage friendship building or rest
+			}
+
+			Log.d(tag, "[DEBUG] Training ${training.name}: Total Gain=$totalStatGain, Final Score=$finalScore")
+			return finalScore.coerceAtMost(1000.0)
 		}
 
 		/**
