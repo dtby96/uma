@@ -2147,24 +2147,46 @@ class Game(val myContext: Context) {
 		 * @return A score representing relationship-building value.
 		 */
 		fun scoreFriendshipTraining(training: Training): Double {
-			// Ignore the blacklist in favor of making sure we build up the relationship bars as fast as possible.
-			printToLog("\n[TRAINING] Starting process to score ${training.name} Training with a focus on building relationship bars.")
+			printToLog("\n[TRAINING] Starting process to score ${training.name} Training with balanced stat/friendship focus.")
 
+			// Start with a base score from total stat gains
+			val statGainTotal = training.statGains.sum()
+			var score = statGainTotal.toDouble() * 2.0  // Base score from stats
+
+			// Add friendship value (but not overwhelming)
 			val barResults = training.relationshipBars
-			if (barResults.isEmpty()) return Double.NEGATIVE_INFINITY
-
-			var score = 0.0
-			for (bar in barResults) {
-				val contribution = when (bar.dominantColor) {
-					"orange" -> 0.0
-					"green" -> 1.0
-					"blue" -> 2.5
-					else -> 0.0
+			if (barResults.isNotEmpty()) {
+				var friendshipBonus = 0.0
+				for (bar in barResults) {
+					val contribution = when (bar.dominantColor) {
+						"orange" -> 0.5   // Small value for orange
+						"green" -> 2.0    // Moderate value for green
+						"blue" -> 5.0     // Good value for blue
+						else -> 0.0
+					}
+					friendshipBonus += contribution
 				}
-				score += contribution
+
+				// Add friendship bonus but cap it to prevent overwhelming stat gains
+				// This ensures 50+ stat trainings beat 20 stat trainings with 1 friendship
+				score += friendshipBonus.coerceAtMost(statGainTotal * 0.5)
+
+				// Special bonus for rainbow trainings (3+ friends)
+				if (barResults.size >= 3) {
+					score *= 1.5  // 50% bonus for rainbow trainings
+					printToLog("[TRAINING] Rainbow training bonus applied!")
+				}
+			} else {
+				// No friendships - pure stat training gets small penalty in Year 1
+				score *= 0.9
 			}
 
-			printToLog("[TRAINING] ${training.name} Training has a score of ${decimalFormat.format(score)} with a focus on building relationship bars.")
+			// Apply failure rate penalty
+			if (training.failureChance > 22) {
+				score *= (1.0 - (training.failureChance - 22) * 0.02).coerceAtLeast(0.5)
+			}
+
+			printToLog("[TRAINING] ${training.name} Training: Stats=${statGainTotal}, Friends=${barResults.size}, Score=${decimalFormat.format(score)}")
 			return score
 		}
 
@@ -2309,35 +2331,40 @@ class Game(val myContext: Context) {
 			var maxScore = 0.0
 
 			for (bar in training.relationshipBars) {
-				// Relationship bar values from the guide
+				// Reduced relationship bar values to prevent overwhelming stats
 				val baseValue = when (bar.dominantColor) {
-					"blue" -> 2.5    // Blue bars: Always highest priority
-					"green" -> 1.0   // Green bars: Secondary priority
-					"orange" -> 0.3  // Orange bars: Minimal value
+					"blue" -> 1.5    // Blue bars: Good value but not overwhelming
+					"green" -> 0.7   // Green bars: Moderate value
+					"orange" -> 0.2  // Orange bars: Minimal value
 					else -> 0.0
 				}
 
 				if (baseValue > 0) {
 					// Apply diminishing returns for relationship building
 					val fillLevel = bar.fillPercent / 100.0
-					val diminishingFactor = 1.0 - (fillLevel * 0.5) // Less valuable as bars fill up
+					val diminishingFactor = 1.0 - (fillLevel * 0.7) // Strong diminishing returns
 
-					// Year-based focus from the guide
-					// Year 1: 55% relationship focus, Year 2: 50/50, Year 3: 30% relationships
+					// Updated year multipliers to match new weights
+					// Now stats are always prioritized, friendships are just a bonus
 					val yearMultiplier = when {
-						currentDate.year == 1 || currentDate.phase == "Pre-Debut" -> 1.55  // 55% focus
-						currentDate.year == 2 -> 1.0   // 50/50 balanced
-						currentDate.year == 3 -> 0.6   // 30% relationships, 70% stats
-						else -> 1.0
+						currentDate.year == 1 || currentDate.phase == "Pre-Debut" -> 0.8  // Reduced from 1.55
+						currentDate.year == 2 -> 0.5   // Reduced from 1.0
+						currentDate.year == 3 -> 0.3   // Reduced from 0.6
+						else -> 0.5
 					}
 
 					val contribution = baseValue * diminishingFactor * yearMultiplier
 					score += contribution
-					maxScore += 2.5 * 1.55  // Max possible value
+					maxScore += 1.5 * 0.8  // Max possible value (adjusted)
 				}
 			}
 
-			return if (maxScore > 0) (score / maxScore * 100.0) else 0.0
+			// Special bonus for rainbow trainings (3+ friends) but capped
+			if (training.relationshipBars.size >= 3) {
+				score *= 1.3  // 30% bonus for rainbow trainings (reduced from higher values)
+			}
+
+			return if (maxScore > 0) (score / maxScore * 100.0).coerceAtMost(50.0) else 0.0  // Cap at 50
 		}
 
 		/**
@@ -2821,16 +2848,19 @@ class Game(val myContext: Context) {
 
 	/**
 	 * Gets year-based training weights for balanced progression.
-	 * Year 1: Focus on friendships (55% weight)
-	 * Year 2: Balanced approach (35% friendship, 65% stats)
-	 * Year 3: Stat maximization (20% friendship, 80% stats)
+	 * Year 1: Balanced with slight friendship focus (25% friendship, 75% stats)
+	 * Year 2: Stat focused (15% friendship, 85% stats)
+	 * Year 3: Maximum stat focus (10% friendship, 90% stats)
+	 *
+	 * NOTE: Even with lower friendship weight, rainbow trainings (3+ friends)
+	 * will still be prioritized due to their exceptional value
 	 */
 	private fun getYearBasedWeights(): Pair<Double, Double> {
 		return when (currentDate.year) {
-			1 -> Pair(0.55, 0.45)  // 55% friendship, 45% stats
-			2 -> Pair(0.35, 0.65)  // 35% friendship, 65% stats
-			3 -> Pair(0.20, 0.80)  // 20% friendship, 80% stats
-			else -> Pair(0.35, 0.65) // Default balanced
+			1 -> Pair(0.25, 0.75)  // 25% friendship, 75% stats - stat focused even in Year 1
+			2 -> Pair(0.15, 0.85)  // 15% friendship, 85% stats - heavy stat focus
+			3 -> Pair(0.10, 0.90)  // 10% friendship, 90% stats - maximum stat priority
+			else -> Pair(0.15, 0.85) // Default stat-focused
 		}
 	}
 
