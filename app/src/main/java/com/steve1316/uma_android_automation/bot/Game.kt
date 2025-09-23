@@ -2159,9 +2159,9 @@ class Game(val myContext: Context) {
 				var friendshipBonus = 0.0
 				for (bar in barResults) {
 					val contribution = when (bar.dominantColor) {
-						"orange" -> 0.5   // Small value for orange
-						"green" -> 2.0    // Moderate value for green
-						"blue" -> 5.0     // Good value for blue
+						"orange" -> 0.0   // No value - already maxed and giving stat bonus
+						"green" -> 2.0    // Moderate value for green - still building
+						"blue" -> 5.0     // Good value for blue - needs development
 						else -> 0.0
 					}
 					friendshipBonus += contribution
@@ -2171,10 +2171,13 @@ class Game(val myContext: Context) {
 				// This ensures 50+ stat trainings beat 20 stat trainings with 1 friendship
 				score += friendshipBonus.coerceAtMost(statGainTotal * 0.5)
 
-				// Special bonus for rainbow trainings (3+ friends)
-				if (barResults.size >= 3) {
+				// Special bonus for rainbow trainings (3+ non-maxed friends)
+				val nonMaxedFriends = barResults.count { it.dominantColor != "orange" }
+				if (nonMaxedFriends >= 3) {
 					score *= 1.5  // 50% bonus for rainbow trainings
-					printToLog("[TRAINING] Rainbow training bonus applied!")
+					printToLog("[TRAINING] Rainbow training bonus applied for $nonMaxedFriends non-maxed friends!")
+				} else if (nonMaxedFriends >= 2) {
+					score *= 1.2  // 20% bonus for 2 non-maxed friends
 				}
 			} else {
 				// No friendships - pure stat training gets small penalty in Year 1
@@ -2331,11 +2334,11 @@ class Game(val myContext: Context) {
 			var maxScore = 0.0
 
 			for (bar in training.relationshipBars) {
-				// Reduced relationship bar values to prevent overwhelming stats
+				// Relationship bar values based on development needs
 				val baseValue = when (bar.dominantColor) {
-					"blue" -> 1.5    // Blue bars: Good value but not overwhelming
-					"green" -> 0.7   // Green bars: Moderate value
-					"orange" -> 0.2  // Orange bars: Minimal value
+					"blue" -> 1.5    // Blue bars: High priority - needs development
+					"green" -> 0.7   // Green bars: Moderate priority - partially developed
+					"orange" -> 0.0  // Orange bars: No value - already maxed, giving full stat bonus
 					else -> 0.0
 				}
 
@@ -2359,8 +2362,9 @@ class Game(val myContext: Context) {
 				}
 			}
 
-			// Special bonus for rainbow trainings (3+ friends) but capped
-			if (training.relationshipBars.size >= 3) {
+			// Special bonus for rainbow trainings (3+ non-maxed friends) but capped
+			val nonMaxedCount = training.relationshipBars.count { it.dominantColor != "orange" }
+			if (nonMaxedCount >= 3) {
 				score *= 1.3  // 30% bonus for rainbow trainings (reduced from higher values)
 			}
 
@@ -2485,16 +2489,16 @@ class Game(val myContext: Context) {
 				printToLog("[TRAINING] Skill hint bonus: +${hintBonus.toInt()} for ${skillHintLocations.size} hints")
 			}
 			
-			// Rainbow training (multiple friendship training) bonus
-			// This is valuable but should be proportional to the actual benefit
-			val highFriendshipBars = training.relationshipBars.count { bar -> 
-				bar.dominantColor == "blue" && bar.fillPercent >= 80 
+			// Rainbow training (multiple non-maxed friendship training) bonus
+			// Only count blue and green bars, not orange (already maxed)
+			val nonMaxedHighBars = training.relationshipBars.count { bar ->
+				(bar.dominantColor == "blue" || bar.dominantColor == "green") && bar.fillPercent >= 80
 			}
-			if (highFriendshipBars >= 2) {
-				// Rainbow training typically gives 50-100% more stats
-				val rainbowBonus = training.statGains.sum() * 0.5 * highFriendshipBars
+			if (nonMaxedHighBars >= 2) {
+				// Rainbow training gives bonus but only for non-maxed friends
+				val rainbowBonus = training.statGains.sum() * 0.3 * nonMaxedHighBars
 				score += rainbowBonus
-				printToLog("[TRAINING] Rainbow training bonus: +${rainbowBonus.toInt()} for ${highFriendshipBars} high friendship bars")
+				printToLog("[TRAINING] Rainbow bonus: +${rainbowBonus.toInt()} for ${nonMaxedHighBars} non-maxed high friendship bars")
 			}
 			
 			// Training camp special handling (summer and winter)
