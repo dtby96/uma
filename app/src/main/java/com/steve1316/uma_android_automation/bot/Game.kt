@@ -1391,6 +1391,28 @@ class Game(val myContext: Context) {
 	private fun evaluateWitVsRest(witTraining: Training?, estimatedEnergy: Double): Boolean {
 		if (witTraining == null) return false
 
+		// Check if we're currently IN a training camp (last turn of camp)
+		val isLastDayOfSummerCamp = currentDate.month == 7 && currentDate.phase == "Late"
+		val isLastDayOfWinterCamp = currentDate.month == 1 && currentDate.phase == "Late"
+		val isLastDayOfTrainingCamp = isLastDayOfSummerCamp || isLastDayOfWinterCamp
+
+		// Special handling for LAST DAY of training camp
+		if (isLastDayOfTrainingCamp) {
+			// Check current mood (would need to be detected earlier in the turn)
+			// For now, we'll assume mood is good if energy is high
+			val likelyHasGoodMood = estimatedEnergy >= 60
+
+			if (likelyHasGoodMood && witTraining.failureChance <= 30) {
+				printToLog("[TRAINING CAMP] LAST DAY of camp! Mood likely Great, prioritizing Lv5 Wit training")
+				printToLog("[TRAINING CAMP] Wit has ${witTraining.failureChance}% failure - acceptable for Lv5 benefits")
+				printToLog("[TRAINING CAMP] Stats: ${witTraining.statGains.sum()}, Friends: ${witTraining.relationshipBars.size}")
+				return true  // Do Wit training to maximize Lv5 benefits
+			} else if (witTraining.failureChance > 30) {
+				printToLog("[TRAINING CAMP] Last day but Wit failure too high (${witTraining.failureChance}%) - will rest")
+				return false
+			}
+		}
+
 		// Check if training camp is approaching (summer or winter) - more aggressive preparation
 		val turnsUntilCamp = getTurnsUntilTrainingCamp()
 		val isTrainingCampApproaching = turnsUntilCamp in 1..3  // Extended preparation window
