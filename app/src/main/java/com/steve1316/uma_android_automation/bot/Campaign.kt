@@ -43,6 +43,25 @@ open class Campaign(val game: Game) {
 				if (!game.encounteredRacingPopup) {
 					// Refresh the stat values in memory.
 					game.updateStatValueMapping()
+					
+					// Update date to check for URA Finals
+					game.updateDate()
+					
+					// Check if URA Finals is imminent and we should spend skill points
+					if (game.currentDate.year == 3 && game.currentDate.month >= 11) {
+						val totalTurns = 72  // 3 years * 24 turns
+						val remainingTurns = totalTurns - game.currentDate.turnNumber
+						
+						if (remainingTurns <= 2 && remainingTurns > 0) {
+							val currentSkillPoints = game.imageUtils.determineSkillPoints()
+							if (currentSkillPoints >= 100) {  // Only stop if we have meaningful skill points to spend
+								game.printToLog("\n[URA FINALS] Bot stopping before URA Finals to allow skill point spending.", tag = tag)
+								game.printToLog("[URA FINALS] Current skill points: $currentSkillPoints", tag = tag)
+								game.notificationMessage = "URA Finals starting - please spend your $currentSkillPoints skill points!"
+								break
+							}
+						}
+					}
 
 					// If the required skill points has been reached, stop the bot.
 					if (game.enableSkillPointCheck && game.imageUtils.determineSkillPoints() >= game.skillPointsRequired) {
