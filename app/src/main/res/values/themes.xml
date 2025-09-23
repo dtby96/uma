@@ -1,30 +1,48 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme using Material 3 -->
-    <style name="Theme.AppTheme" parent="Theme.Material3.DayNight">
-        <!-- Material 3 color system -->
-        <item name="colorPrimary">@color/md_deep_orange_700</item>
+    <!-- Base application theme using Material 3 with Uma Musume colors -->
+    <style name="Theme.AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Material 3 color system with Uma Musume palette -->
+        <item name="colorPrimary">@color/uma_primary</item>
         <item name="colorOnPrimary">@color/white</item>
-        <item name="colorPrimaryContainer">@color/md_deep_orange_200</item>
-        <item name="colorOnPrimaryContainer">@color/md_deep_orange_900</item>
-        
-        <item name="colorSecondary">@color/teal_200</item>
-        <item name="colorOnSecondary">@color/black</item>
-        <item name="colorSecondaryContainer">@color/teal_100</item>
-        <item name="colorOnSecondaryContainer">@color/teal_900</item>
-        
-        <item name="colorTertiary">@color/purple_700</item>
+        <item name="colorPrimaryContainer">@color/uma_primary_light</item>
+        <item name="colorOnPrimaryContainer">@color/uma_primary_dark</item>
+
+        <item name="colorSecondary">@color/uma_secondary</item>
+        <item name="colorOnSecondary">@color/white</item>
+        <item name="colorSecondaryContainer">@color/uma_secondary_light</item>
+        <item name="colorOnSecondaryContainer">@color/uma_secondary_dark</item>
+
+        <item name="colorTertiary">@color/md_indigo_500</item>
         <item name="colorOnTertiary">@color/white</item>
-        
+        <item name="colorTertiaryContainer">@color/md_indigo_200</item>
+        <item name="colorOnTertiaryContainer">@color/md_indigo_900</item>
+
         <item name="colorError">@color/md_red_700</item>
         <item name="colorOnError">@color/white</item>
-        
+        <item name="colorErrorContainer">@color/md_red_200</item>
+        <item name="colorOnErrorContainer">@color/md_red_900</item>
+
         <item name="colorSurface">@color/white</item>
         <item name="colorOnSurface">@color/black</item>
-        <item name="colorSurfaceVariant">@color/md_grey_100</item>
+        <item name="colorSurfaceVariant">@color/surface_elevated</item>
         <item name="colorOnSurfaceVariant">@color/md_grey_700</item>
-        
-        <!-- Status bar color -->
-        <item name="android:statusBarColor">?attr/colorPrimary</item>
+
+        <!-- Status bar and navigation bar -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+
+        <!-- Enable edge-to-edge -->
+        <item name="android:windowTranslucentStatus">false</item>
+        <item name="android:windowTranslucentNavigation">false</item>
+
+        <!-- Typography -->
+        <item name="android:fontFamily">sans-serif-medium</item>
+
+        <!-- Shape -->
+        <item name="shapeSmall">@style/ShapeAppearance.Material3.SmallComponent</item>
+        <item name="shapeMedium">@style/ShapeAppearance.Material3.MediumComponent</item>
+        <item name="shapeLarge">@style/ShapeAppearance.Material3.LargeComponent</item>
     </style>
 
     <style name="Theme.AppTheme.NoActionBar">
@@ -32,7 +50,58 @@
         <item name="windowNoTitle">true</item>
     </style>
 
-    <style name="Theme.AppTheme.AppBarOverlay" parent="ThemeOverlay.AppCompat.Dark.ActionBar" />
+    <style name="Theme.AppTheme.AppBarOverlay" parent="ThemeOverlay.Material3.Dark.ActionBar" />
 
-    <style name="Theme.AppTheme.PopupOverlay" parent="ThemeOverlay.AppCompat.Light" />
+    <style name="Theme.AppTheme.PopupOverlay" parent="ThemeOverlay.Material3.Light" />
+
+    <!-- Custom styles for stat-themed components -->
+    <style name="Widget.UmaMusume.Slider.Speed" parent="Widget.Material3.Slider">
+        <item name="materialThemeOverlay">@style/ThemeOverlay.UmaMusume.Slider.Speed</item>
+    </style>
+
+    <style name="ThemeOverlay.UmaMusume.Slider.Speed" parent="">
+        <item name="colorPrimary">@color/uma_speed</item>
+        <item name="colorPrimaryContainer">@color/uma_speed_light</item>
+        <item name="colorOnPrimaryContainer">@color/uma_speed_dark</item>
+    </style>
+
+    <style name="Widget.UmaMusume.Slider.Stamina" parent="Widget.Material3.Slider">
+        <item name="materialThemeOverlay">@style/ThemeOverlay.UmaMusume.Slider.Stamina</item>
+    </style>
+
+    <style name="ThemeOverlay.UmaMusume.Slider.Stamina" parent="">
+        <item name="colorPrimary">@color/uma_stamina</item>
+        <item name="colorPrimaryContainer">@color/uma_stamina_light</item>
+        <item name="colorOnPrimaryContainer">@color/uma_stamina_dark</item>
+    </style>
+
+    <style name="Widget.UmaMusume.Slider.Power" parent="Widget.Material3.Slider">
+        <item name="materialThemeOverlay">@style/ThemeOverlay.UmaMusume.Slider.Power</item>
+    </style>
+
+    <style name="ThemeOverlay.UmaMusume.Slider.Power" parent="">
+        <item name="colorPrimary">@color/uma_power</item>
+        <item name="colorPrimaryContainer">@color/uma_power_light</item>
+        <item name="colorOnPrimaryContainer">@color/uma_power_dark</item>
+    </style>
+
+    <style name="Widget.UmaMusume.Slider.Guts" parent="Widget.Material3.Slider">
+        <item name="materialThemeOverlay">@style/ThemeOverlay.UmaMusume.Slider.Guts</item>
+    </style>
+
+    <style name="ThemeOverlay.UmaMusume.Slider.Guts" parent="">
+        <item name="colorPrimary">@color/uma_guts</item>
+        <item name="colorPrimaryContainer">@color/uma_guts_light</item>
+        <item name="colorOnPrimaryContainer">@color/uma_guts_dark</item>
+    </style>
+
+    <style name="Widget.UmaMusume.Slider.Wit" parent="Widget.Material3.Slider">
+        <item name="materialThemeOverlay">@style/ThemeOverlay.UmaMusume.Slider.Wit</item>
+    </style>
+
+    <style name="ThemeOverlay.UmaMusume.Slider.Wit" parent="">
+        <item name="colorPrimary">@color/uma_wit</item>
+        <item name="colorPrimaryContainer">@color/uma_wit_light</item>
+        <item name="colorOnPrimaryContainer">@color/uma_wit_dark</item>
+    </style>
 </resources>

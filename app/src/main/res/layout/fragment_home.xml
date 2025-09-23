@@ -36,24 +36,37 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
-                app:cardElevation="2dp"
-                app:cardCornerRadius="12dp">
+                app:cardElevation="4dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="?attr/colorPrimaryContainer">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="20dp">
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/start_button"
                         android:layout_width="match_parent"
-                        android:layout_height="64dp"
+                        android:layout_height="72dp"
                         android:text="@string/start"
-                        android:textSize="18sp"
-                        app:icon="@android:drawable/ic_media_play"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        app:icon="@drawable/play_circle_filled"
+                        app:iconSize="32dp"
                         app:iconGravity="textStart"
-                        style="@style/Widget.Material3.Button.TonalButton" />
+                        app:cornerRadius="16dp"
+                        style="@style/Widget.Material3.Button.FilledButton" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Tap to start training automation"
+                        android:textAlignment="center"
+                        android:textAppearance="?attr/textAppearanceCaption"
+                        android:textColor="?attr/colorOnPrimaryContainer"
+                        android:layout_marginTop="8dp" />
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
@@ -127,12 +140,28 @@
 
                     <!-- Stat Sliders -->
                     <!-- Speed -->
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Speed"
-                        android:textAppearance="?attr/textAppearanceLabelLarge"
-                        android:layout_marginBottom="4dp" />
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="4dp"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="⚡"
+                            android:textSize="20sp"
+                            android:textColor="@color/uma_speed"
+                            android:layout_marginEnd="8dp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Speed"
+                            android:textAppearance="?attr/textAppearanceLabelLarge"
+                            android:textColor="@color/uma_speed" />
+                    </LinearLayout>
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -149,7 +178,8 @@
                             android:valueTo="1200"
                             android:value="600"
                             android:stepSize="50"
-                            app:labelBehavior="gone" />
+                            app:labelBehavior="gone"
+                            style="@style/Widget.UmaMusume.Slider.Speed" />
 
                         <com.google.android.material.textview.MaterialTextView
                             android:id="@+id/speed_value"
@@ -163,12 +193,27 @@
                     </LinearLayout>
 
                     <!-- Stamina -->
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Stamina"
-                        android:textAppearance="?attr/textAppearanceLabelLarge"
-                        android:layout_marginBottom="4dp" />
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="4dp"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="❤️"
+                            android:textSize="20sp"
+                            android:layout_marginEnd="8dp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Stamina"
+                            android:textAppearance="?attr/textAppearanceLabelLarge"
+                            android:textColor="@color/uma_stamina" />
+                    </LinearLayout>
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -185,7 +230,8 @@
                             android:valueTo="1200"
                             android:value="600"
                             android:stepSize="50"
-                            app:labelBehavior="gone" />
+                            app:labelBehavior="gone"
+                            style="@style/Widget.UmaMusume.Slider.Stamina" />
 
                         <com.google.android.material.textview.MaterialTextView
                             android:id="@+id/stamina_value"
@@ -199,12 +245,27 @@
                     </LinearLayout>
 
                     <!-- Power -->
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Power"
-                        android:textAppearance="?attr/textAppearanceLabelLarge"
-                        android:layout_marginBottom="4dp" />
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="4dp"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="💪"
+                            android:textSize="20sp"
+                            android:layout_marginEnd="8dp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Power"
+                            android:textAppearance="?attr/textAppearanceLabelLarge"
+                            android:textColor="@color/uma_power" />
+                    </LinearLayout>
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -221,7 +282,8 @@
                             android:valueTo="1200"
                             android:value="600"
                             android:stepSize="50"
-                            app:labelBehavior="gone" />
+                            app:labelBehavior="gone"
+                            style="@style/Widget.UmaMusume.Slider.Power" />
 
                         <com.google.android.material.textview.MaterialTextView
                             android:id="@+id/power_value"
@@ -235,12 +297,27 @@
                     </LinearLayout>
 
                     <!-- Guts -->
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Guts"
-                        android:textAppearance="?attr/textAppearanceLabelLarge"
-                        android:layout_marginBottom="4dp" />
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="4dp"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="🔥"
+                            android:textSize="20sp"
+                            android:layout_marginEnd="8dp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Guts"
+                            android:textAppearance="?attr/textAppearanceLabelLarge"
+                            android:textColor="@color/uma_guts" />
+                    </LinearLayout>
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -257,7 +334,8 @@
                             android:valueTo="1200"
                             android:value="300"
                             android:stepSize="50"
-                            app:labelBehavior="gone" />
+                            app:labelBehavior="gone"
+                            style="@style/Widget.UmaMusume.Slider.Guts" />
 
                         <com.google.android.material.textview.MaterialTextView
                             android:id="@+id/guts_value"
@@ -271,12 +349,27 @@
                     </LinearLayout>
 
                     <!-- Wit -->
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Wit"
-                        android:textAppearance="?attr/textAppearanceLabelLarge"
-                        android:layout_marginBottom="4dp" />
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="4dp"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="🧠"
+                            android:textSize="20sp"
+                            android:layout_marginEnd="8dp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Wit"
+                            android:textAppearance="?attr/textAppearanceLabelLarge"
+                            android:textColor="@color/uma_wit" />
+                    </LinearLayout>
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -293,7 +386,8 @@
                             android:valueTo="1200"
                             android:value="600"
                             android:stepSize="50"
-                            app:labelBehavior="gone" />
+                            app:labelBehavior="gone"
+                            style="@style/Widget.UmaMusume.Slider.Wit" />
 
                         <com.google.android.material.textview.MaterialTextView
                             android:id="@+id/wit_value"
