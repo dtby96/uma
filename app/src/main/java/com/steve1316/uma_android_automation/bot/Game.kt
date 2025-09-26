@@ -1169,11 +1169,11 @@ class Game(val myContext: Context) {
 		val turnsUntilCamp = getTurnsUntilTrainingCamp()
 		val turnsUntilURA = getTurnsUntilURAFinals()
 
-		// Don't run extra races if important events are approaching
-		if (turnsUntilCamp in 1..2) {
-			printToLog("[RACE] Training camp in $turnsUntilCamp turns - skipping extra race to save energy")
-			return false
-		}
+//		// Don't run extra races if important events are approaching
+//		if (turnsUntilCamp in 1..2) {
+//			printToLog("[RACE] Training camp in $turnsUntilCamp turns - skipping extra race to save energy")
+//			return false
+//		}
 
 		if (turnsUntilURA in 1..3) {
 			printToLog("[RACE] URA Finals in $turnsUntilURA turns - focusing on training instead of extra races")
