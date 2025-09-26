@@ -60,27 +60,146 @@ class Game(val myContext: Context) {
 		"Guts" to 0,
 		"Wit" to 0
 	)
-	
+
+	// Actual energy costs for Global server URA Finale scenario
+	private val trainingEnergyCosts = mapOf(
+		"Speed" to 21,    // -21 energy
+		"Stamina" to 19,  // -19 energy (lowest cost)
+		"Power" to 20,    // -20 energy
+		"Guts" to 22,     // -22 energy (highest cost)
+		"Wit" to -5       // +5 energy (recovers energy)
+	)
+
+	// Base training stats at Level 1 for Global server
+	data class BaseTrainingStats(
+		val speed: Int = 0,
+		val stamina: Int = 0,
+		val power: Int = 0,
+		val guts: Int = 0,
+		val wit: Int = 0,
+		val sp: Int = 0
+	)
+
+	private val baseTrainingStats = mapOf(
+		"Speed" to BaseTrainingStats(speed=10, power=5, sp=2),
+		"Stamina" to BaseTrainingStats(stamina=9, guts=4, sp=2),
+		"Power" to BaseTrainingStats(stamina=5, power=8, sp=2),
+		"Guts" to BaseTrainingStats(speed=4, power=4, guts=8, sp=2),
+		"Wit" to BaseTrainingStats(speed=2, wit=9, sp=4)
+	)
+
 	// Track current conditions (good and bad)
 	private var currentConditions: MutableList<String> = mutableListOf()
 	private var currentFans: Int = 0
 	private var currentDistance: String = "Medium" // Default to Medium distance
 	private val blacklist: List<String> = sharedPreferences.getStringSet("trainingBlacklist", setOf())!!.toList()
+	// Auto-calculated stat prioritization based on target values
 	private var statPrioritization: List<String> = sharedPreferences.getString("statPrioritization", "Speed|Stamina|Power|Guts|Wit")!!.split("|")
 	private val enablePrioritizeEnergyOptions: Boolean = sharedPreferences.getBoolean("enablePrioritizeEnergyOptions", false)
 	private val maximumFailureChance: Int = sharedPreferences.getInt("maximumFailureChance", 15)
 	private val disableTrainingOnMaxedStat: Boolean = sharedPreferences.getBoolean("disableTrainingOnMaxedStat", true)
 	private val focusOnSparkStatTarget: Boolean = sharedPreferences.getBoolean("focusOnSparkStatTarget", false)
-	private val statTargetsByDistance: MutableMap<String, IntArray> = mutableMapOf(
-		"Sprint" to intArrayOf(0, 0, 0, 0, 0),
-		"Mile" to intArrayOf(0, 0, 0, 0, 0),
-		"Medium" to intArrayOf(0, 0, 0, 0, 0),
-		"Long" to intArrayOf(0, 0, 0, 0, 0)
-	)
-	private var preferredDistance: String = ""
+	private var statTargets: IntArray = intArrayOf(0, 0, 0, 0, 0)
+	private var runningStyle: String = ""
 	private var firstTrainingCheck = true
-	private val currentStatCap = 1200
+	// Dynamic stat cap based on character and supports (can be adjusted)
+	private val baseStatCap = 1200
+	private val currentStatCap = baseStatCap  // Could be modified based on supports/character
 	private val historicalTrainingCounts: MutableMap<String, Int> = mutableMapOf()
+
+	// Loop prevention and training history
+	private val recentTrainings = mutableListOf<String>()  // Track last 5 trainings
+	private val maxRecentHistory = 5
+	private var consecutiveSameTraining = 0
+	private var lastTrainingName = ""
+	private val maxConsecutiveSame = 3  // Prevent doing same training more than 3 times in a row
+
+	// Training level tracking (each stat starts at Lv1, needs 4 trainings to level up, max Lv5)
+	private val trainingLevels: MutableMap<String, Int> = mutableMapOf(
+		"Speed" to 1, "Stamina" to 1, "Power" to 1, "Guts" to 1, "Wit" to 1
+	)
+	private val trainingCountForLevel: MutableMap<String, Int> = mutableMapOf(
+		"Speed" to 0, "Stamina" to 0, "Power" to 0, "Guts" to 0, "Wit" to 0
+	)
+	private val trainingsPerLevel = 4  // Need 4 trainings to level up
+	private val maxTrainingLevel = 5   // Maximum level is 5
+	private val absoluteStatCap = 1200 // Stats beyond 1200 give 0 gains
+
+	// Level multipliers - URA Finale training levels increase every 4 uses
+	// These are approximate multipliers based on community testing
+	private val levelMultipliers = mapOf(
+		1 to 1.0,   // Base value
+		2 to 1.15,  // +15% stat gains
+		3 to 1.35,  // +35% stat gains
+		4 to 1.55,  // +55% stat gains
+		5 to 1.75   // +75% stat gains (Lv5 is equivalent to summer camp)
+	)
+
+	// Thompson Sampling tracking
+	private val trainingSuccessHistory: MutableMap<String, Pair<Int, Int>> = mutableMapOf() // (successes, total attempts)
+	private val trainingValueHistory: MutableMap<String, Double> = mutableMapOf() // Average value per training
+	private var totalTrainingsDone = 0
+
+	// Support Card Friendship Tracking (0-100% for each card)
+	private val supportFriendships: MutableMap<String, Int> = mutableMapOf()
+	private val friendshipGainPerTraining = 4 // Average gain per training together
+	private val maxFriendship = 100
+
+	// Skill Point Tracking and Warnings
+	private var currentSkillPoints = 0
+	private var lastSkillPointCheck = 0 // Turn number of last check
+	private val skillPointWarningThresholds = mapOf(
+		"Year 2 Mid" to 200,  // Should have 200+ by mid Year 2
+		"Year 3 Start" to 400, // Should have 400+ by Year 3
+		"Pre-URA" to 600      // Should have 600+ before URA Finals
+	)
+
+	// Bad Condition Management (Disabled - needs image assets)
+	private val badConditions = mutableSetOf<String>()
+	private val knownBadConditions = listOf(
+		"practice_poor",   // 練習下手 - Training failure rate +2%
+		"night_owl",       // 夜ふかし - Random -10 energy
+		"slow_metabolism", // Speed stat cannot increase
+		"slacker",         // なまけ癖 - May skip training
+		"migraine",        // 頭痛 - Mood cannot increase
+		"dry_skin"         // Random mood decrease
+	)
+
+	// Algorithm parameters
+	private val discountFactor = 0.9  // Future value discount
+
+	// Character race calendar data structure
+	data class CharacterRace(
+		val name: String,
+		val turn: Int,         // Turn number (1-72)
+		val month: Int,        // Month (1-12)
+		val phase: String,     // "Early" or "Late"
+		val grade: String,     // "Debut", "G3", "G2", "G1"
+		val required: Boolean, // Is this a mandatory goal race?
+		val placement: Int     // Required placement (1=1st, 3=3rd or better, 5=5th or better)
+	)
+
+	// Example: Grass Wonder's goal races
+	// This should eventually be loaded from characters.json or scraped from GameTora
+	private val grassWonderRaces = listOf(
+		CharacterRace("Make Debut", 12, 6, "Late", "Debut", true, 99),
+		CharacterRace("Asahi Hai Futurity", 23, 12, "Early", "G1", true, 5),
+		CharacterRace("Tokyo Yushun", 34, 5, "Late", "G1", true, 5),
+		CharacterRace("Japan Cup", 46, 11, "Late", "G1", true, 5),
+		CharacterRace("Arima Kinen", 48, 12, "Late", "G1", true, 3),
+		CharacterRace("Takarazuka Kinen", 60, 6, "Late", "G1", true, 3),
+		CharacterRace("Mainichi Okan", 67, 10, "Early", "G2", true, 1),
+		CharacterRace("Arima Kinen", 72, 12, "Late", "G1", true, 1)
+	)
+
+	// URA Finals milestones
+	private val uraFinalesMilestones = mapOf(
+		"valentine" to Pair(60000, 38),    // Early Feb Year 3
+		"april" to Pair(70000, 40),         // Early April Year 3
+		"christmas" to Pair(120000, 72)     // Late Dec Year 3
+	)
+	private val ucbExplorationParam = 1.4  // UCB1 exploration parameter
+	private val thompsonExplorationWeight = 0.3  // Weight for exploration vs exploitation
 
 	////////////////////////////////////////////////////////////////////
 	////////////////////////////////////////////////////////////////////
@@ -107,7 +226,7 @@ class Game(val myContext: Context) {
 	////////////////////////////////////////////////////////////////////
 	////////////////////////////////////////////////////////////////////
 	// Misc
-	private var currentDate: Date = Date(1, "Early", 1, 1)
+	internal var currentDate: Date = Date(1, "Early", 1, 1)
 	private var inheritancesDone = 0
 	private val startTime: Long = System.currentTimeMillis()
 	// Hard stop dates for campaign runs
@@ -328,51 +447,26 @@ class Game(val myContext: Context) {
 	////////////////////////////////////////////////////////////////////
 
 	/**
-	 * Sets up stat targets for different race distances by reading values from SharedPreferences. These targets are used to determine training priorities based on the expected race distance.
+	 * Loads stat targets from SharedPreferences using the new simplified system.
+	 * Also reloads the auto-calculated stat prioritization.
 	 */
-	private fun setStatTargetsByDistances() {
-		val sprintSpeedTarget = sharedPreferences.getInt("trainingSprintStatTarget_speedStatTarget", 900)
-		val sprintStaminaTarget = sharedPreferences.getInt("trainingSprintStatTarget_staminaStatTarget", 300)
-		val sprintPowerTarget = sharedPreferences.getInt("trainingSprintStatTarget_powerStatTarget", 600)
-		val sprintGutsTarget = sharedPreferences.getInt("trainingSprintStatTarget_gutsStatTarget", 300)
-		val sprintWitTarget = sharedPreferences.getInt("trainingSprintStatTarget_witStatTarget", 300)
+	private fun loadStatTargets() {
+		// Reload the auto-calculated priority in case it changed
+		statPrioritization = sharedPreferences.getString("statPrioritization", "Speed|Stamina|Power|Guts|Wit")!!.split("|")
 
-		val mileSpeedTarget = sharedPreferences.getInt("trainingMileStatTarget_speedStatTarget", 900)
-		val mileStaminaTarget = sharedPreferences.getInt("trainingMileStatTarget_staminaStatTarget", 300)
-		val milePowerTarget = sharedPreferences.getInt("trainingMileStatTarget_powerStatTarget", 600)
-		val mileGutsTarget = sharedPreferences.getInt("trainingMileStatTarget_gutsStatTarget", 300)
-		val mileWitTarget = sharedPreferences.getInt("trainingMileStatTarget_witStatTarget", 300)
+		val speedTarget = sharedPreferences.getInt("current_speed_target", 800)
+		val staminaTarget = sharedPreferences.getInt("current_stamina_target", 600)
+		val powerTarget = sharedPreferences.getInt("current_power_target", 600)
+		val gutsTarget = sharedPreferences.getInt("current_guts_target", 300)
+		val witTarget = sharedPreferences.getInt("current_wit_target", 300)
 
-		val mediumSpeedTarget = sharedPreferences.getInt("trainingMediumStatTarget_speedStatTarget", 800)
-		val mediumStaminaTarget = sharedPreferences.getInt("trainingMediumStatTarget_staminaStatTarget", 450)
-		val mediumPowerTarget = sharedPreferences.getInt("trainingMediumStatTarget_powerStatTarget", 550)
-		val mediumGutsTarget = sharedPreferences.getInt("trainingMediumStatTarget_gutsStatTarget", 300)
-		val mediumWitTarget = sharedPreferences.getInt("trainingMediumStatTarget_witStatTarget", 300)
+		// Load distance and running style (though distance is no longer used for targeting)
+		val selectedDistance = sharedPreferences.getString("selected_distance", "Medium") ?: "Medium"
+		runningStyle = sharedPreferences.getString("selected_running_style", "Nige") ?: "Nige"
 
-		val longSpeedTarget = sharedPreferences.getInt("trainingLongStatTarget_speedStatTarget", 700)
-		val longStaminaTarget = sharedPreferences.getInt("trainingLongStatTarget_staminaStatTarget", 600)
-		val longPowerTarget = sharedPreferences.getInt("trainingLongStatTarget_powerStatTarget", 450)
-		val longGutsTarget = sharedPreferences.getInt("trainingLongStatTarget_gutsStatTarget", 300)
-		val longWitTarget = sharedPreferences.getInt("trainingLongStatTarget_witStatTarget", 300)
-
-		// Set the stat targets for each distance type.
+		// Set the stat targets array
 		// Order: Speed, Stamina, Power, Guts, Wit
-		// If no custom targets are set, use optimal defaults from the guide
-		statTargetsByDistance["Sprint"] = if (sprintSpeedTarget == 0) 
-			intArrayOf(1200, 400, 900, 400, 600) else
-			intArrayOf(sprintSpeedTarget, sprintStaminaTarget, sprintPowerTarget, sprintGutsTarget, sprintWitTarget)
-		
-		statTargetsByDistance["Mile"] = if (mileSpeedTarget == 0)
-			intArrayOf(1100, 500, 800, 500, 600) else
-			intArrayOf(mileSpeedTarget, mileStaminaTarget, milePowerTarget, mileGutsTarget, mileWitTarget)
-		
-		statTargetsByDistance["Medium"] = if (mediumSpeedTarget == 0)
-			intArrayOf(1000, 700, 700, 500, 600) else
-			intArrayOf(mediumSpeedTarget, mediumStaminaTarget, mediumPowerTarget, mediumGutsTarget, mediumWitTarget)
-		
-		statTargetsByDistance["Long"] = if (longSpeedTarget == 0)
-			intArrayOf(800, 1000, 600, 600, 600) else
-			intArrayOf(longSpeedTarget, longStaminaTarget, longPowerTarget, longGutsTarget, longWitTarget)
+		statTargets = intArrayOf(speedTarget, staminaTarget, powerTarget, gutsTarget, witTarget)
 	}
 
 	/**
@@ -588,6 +682,393 @@ class Game(val myContext: Context) {
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Helper functions to be shared amongst the various Campaigns.
 
+	/**
+	 * Calculate turns until the next training camp (summer or winter).
+	 * Returns -1 if no camp is approaching within 2 turns.
+	 * We only prepare in the 2 turns immediately before camp starts.
+	 */
+	private fun getTurnsUntilTrainingCamp(): Int {
+		return when {
+			// Summer camp starts at Late June
+			currentDate.month == 6 && currentDate.phase == "Early" -> 1  // Next turn is camp
+			currentDate.month == 5 && currentDate.phase == "Late" -> 2   // 2 turns until camp
+
+			// Winter camp starts at Late December
+			currentDate.month == 12 && currentDate.phase == "Early" -> 1  // Next turn is camp
+			currentDate.month == 11 && currentDate.phase == "Late" -> 2   // 2 turns until camp
+
+			else -> -1  // No camp approaching or too far away
+		}
+	}
+
+	/**
+	 * Calculate turns until URA Finals.
+	 * Returns -1 if not in Year 3 or too far from finals.
+	 */
+	private fun getTurnsUntilURAFinals(): Int {
+		if (currentDate.year != 3) return -1
+
+		return when {
+			// URA Finals happens AFTER Late December Year 3
+			// Late December is the last training turn before URA Finals
+			currentDate.month == 12 && currentDate.phase == "Early" -> 1  // Next is Late Dec (last training)
+			currentDate.month == 11 && currentDate.phase == "Late" -> 2
+			currentDate.month == 11 && currentDate.phase == "Early" -> 3
+			currentDate.month == 10 && currentDate.phase == "Late" -> 4
+			currentDate.month == 10 && currentDate.phase == "Early" -> 5
+			else -> -1
+		}
+	}
+
+	/**
+	 * Check if currently in summer training camp.
+	 */
+	private fun isInSummerTraining(): Boolean {
+		return (currentDate.month == 6 && currentDate.phase == "Late") || currentDate.month == 7
+	}
+
+	/**
+	 * Check if currently in winter training camp.
+	 */
+	private fun isInWinterTraining(): Boolean {
+		return (currentDate.month == 12 && currentDate.phase == "Late") || currentDate.month == 1
+	}
+
+	/**
+	 * Get energy estimate from failure rates using the game formula.
+	 * Failure% = max(0, (50 - Energy) * 0.5)
+	 * So: Energy = 50 - (Failure% * 2)
+	 */
+	private fun estimateCurrentEnergy(): Double {
+		// If we have recent training data, use average failure rate to estimate
+		if (trainingMap.isNotEmpty()) {
+			val avgFailure = trainingMap.values.map { it.failureChance }.average()
+			// Using correct game formula: Energy = 50 - (Failure% * 2)
+			return (50 - avgFailure * 2).coerceIn(0.0, 100.0)
+		}
+		// Default to moderate energy if no data
+		return 50.0
+	}
+
+	/**
+	 * Updates training level tracking for a stat.
+	 * Each stat levels up after 4 trainings (max level 5).
+	 */
+	private fun updateTrainingLevel(statName: String) {
+		val currentLevel = trainingLevels.getOrDefault(statName, 1)
+		val currentCount = trainingCountForLevel.getOrDefault(statName, 0) + 1
+
+		if (currentCount >= trainingsPerLevel && currentLevel < maxTrainingLevel) {
+			// Level up!
+			trainingLevels[statName] = currentLevel + 1
+			trainingCountForLevel[statName] = 0
+			printToLog("[TRAINING-LEVEL] $statName leveled up to Lv${currentLevel + 1}!")
+		} else {
+			trainingCountForLevel[statName] = currentCount
+		}
+	}
+
+	/**
+	 * Apply training level adjustments - REWARD leveling instead of penalizing.
+	 * Higher levels provide better stat gains, making leveling strategic.
+	 */
+	private fun applyTrainingLevelAdjustments(training: Training, baseScore: Double): Double {
+		var score = baseScore
+		val currentLevel = trainingLevels.getOrDefault(training.name, 1)
+		val levelProgress = trainingCountForLevel.getOrDefault(training.name, 0)
+		val currentStat = currentStatsMap.getOrDefault(training.name, 0)
+
+		// Apply level multiplier bonus - higher levels are BETTER
+		val levelBonus = levelMultipliers[currentLevel] ?: 1.0
+		score *= levelBonus
+		if (currentLevel > 1) {
+			printToLog("[TRAINING-LEVEL] ${training.name} Lv$currentLevel provides ${((levelBonus - 1) * 100).toInt()}% stat bonus")
+		}
+
+		// Check if approaching absolute stat cap
+		if (currentStat >= absoluteStatCap - 100) {
+			score *= 0.1  // Massive penalty near cap
+			printToLog("[TRAINING-LEVEL] ${training.name} near absolute cap ($currentStat/$absoluteStatCap) - 90% penalty")
+			return score
+		}
+
+		// Check if this training would push us over the cap
+		val estimatedGain = training.statGains[trainings.indexOf(training.name)]
+		if (currentStat + estimatedGain > absoluteStatCap) {
+			score *= 0.2  // Heavy penalty for wasted gains
+			printToLog("[TRAINING-LEVEL] ${training.name} would exceed cap - 80% penalty")
+			return score
+		}
+
+		// Calculate how many times this stat has been trained recently
+		val recentCount = recentTrainings.count { it == training.name }
+		val totalCount = historicalTrainingCounts.getOrDefault(training.name, 0)
+
+		// Strategic level-up bonus - leveling up priority stats is GOOD
+		if (levelProgress == trainingsPerLevel - 1 && currentLevel < maxTrainingLevel) {
+			// About to level up - significant bonus for important stats
+			val priorityIndex = statPrioritization.indexOf(training.name)
+			val levelUpBonus = when (priorityIndex) {
+				0 -> 1.5  // 50% bonus for top priority
+				1 -> 1.3  // 30% bonus for second priority
+				2 -> 1.15 // 15% bonus for third
+				else -> 1.05 // Small bonus for others
+			}
+			score *= levelUpBonus
+			printToLog("[TRAINING-LEVEL] ${training.name} about to level up (Lv$currentLevel->Lv${currentLevel+1}) - ${((levelUpBonus - 1) * 100).toInt()}% bonus")
+		}
+
+		// Check if we should strategically spam this training
+		val shouldSpam = shouldStrategicallySpam(training)
+		if (shouldSpam) {
+			score *= 1.5  // 50% bonus for strategic spamming
+			printToLog("[TRAINING-LEVEL] Strategic spam bonus for ${training.name} - critical for build")
+		} else {
+			// Apply soft balance constraints only if NOT strategically spamming
+			val avgOtherStats = currentStatsMap.filterKeys { it != training.name }.values.average()
+			when {
+				// Only penalize if EXTREMELY imbalanced and not priority
+				currentStat > avgOtherStats * 2.0 && statPrioritization.indexOf(training.name) > 2 -> {
+					score *= 0.6
+					printToLog("[TRAINING-LEVEL] ${training.name} ($currentStat) extremely high vs others (${avgOtherStats.toInt()}) - soft balance penalty")
+				}
+			}
+		}
+
+		// Bonus for balanced leveling
+		val minLevel = trainingLevels.values.minOrNull() ?: 1
+		val maxLevel = trainingLevels.values.maxOrNull() ?: 1
+		if (maxLevel - minLevel > 2 && currentLevel == minLevel) {
+			score *= 1.2
+			printToLog("[TRAINING-LEVEL] ${training.name} Lv$currentLevel is behind (max: Lv$maxLevel) - 20% catch-up bonus")
+		}
+
+		return score
+	}
+
+	/**
+	 * Check if we should strategically spam a training.
+	 * Some builds REQUIRE spamming (e.g., 1200 Speed for Sprint).
+	 */
+	private fun shouldStrategicallySpam(training: Training): Boolean {
+		val statIndex = trainings.indexOf(training.name)
+		val currentStat = currentStatsMap.getOrDefault(training.name, 0)
+		val target = statTargets.getOrElse(statIndex) { 600 }
+		val completion = if (target > 0) currentStat.toDouble() / target else 1.0
+		val priorityIndex = statPrioritization.indexOf(training.name)
+
+		// Strategic spam conditions
+		return when {
+			// Sprint builds MUST have 1200 Speed
+			currentDistance == "Sprint" && training.name == "Speed" && currentStat < 1150 -> true
+
+			// Long distance MUST have high Stamina
+			currentDistance == "Long" && training.name == "Stamina" && currentStat < 900 -> true
+
+			// About to level up a high-priority stat
+			trainingCountForLevel[training.name] == 3 && priorityIndex <= 1 -> true
+
+			// Lv5 training camp with high-value opportunity (3+ friends or rainbow)
+			(isInSummerTraining() || isInWinterTraining()) &&
+			(training.relationshipBars.count { it.dominantColor == "blue" } >= 3 ||
+			 training.statGains.sum() > 80) -> true
+
+			// Critical deficit in primary stat (less than 40% complete)
+			completion < 0.4 && priorityIndex == 0 -> true
+
+			// Year 3 final push for primary stats
+			currentDate.year == 3 && priorityIndex <= 1 && completion < 0.85 -> true
+
+			else -> false
+		}
+	}
+
+	/**
+	 * Apply loop prevention with intelligence - allow strategic spamming.
+	 */
+	private fun applyLoopPreventionPenalties(training: Training, baseScore: Double): Double {
+		var score = baseScore
+
+		// If strategic spamming is needed, don't apply penalties
+		if (shouldStrategicallySpam(training)) {
+			return score
+		}
+
+		// Otherwise apply soft penalties for repetition
+		if (training.name == lastTrainingName && consecutiveSameTraining >= 3) {
+			score *= 0.7  // Soft penalty after 3 consecutive
+			printToLog("[LOOP-PREVENTION] ${training.name} done $consecutiveSameTraining times - soft 30% penalty")
+		}
+
+		// Only penalize if appears too frequently AND isn't priority
+		val recentFrequency = recentTrainings.count { it == training.name }
+		if (recentFrequency >= 4 && statPrioritization.indexOf(training.name) > 1) {
+			score *= 0.6
+			printToLog("[LOOP-PREVENTION] ${training.name} appears $recentFrequency times in last 5 (non-priority) - 40% penalty")
+		}
+
+		return score
+	}
+
+	/**
+	 * Thompson Sampling for exploration-exploitation balance.
+	 * Samples from Beta distribution based on success history.
+	 */
+	private fun calculateThompsonScore(training: Training): Double {
+		val history = trainingSuccessHistory.getOrDefault(training.name, Pair(0, 0))
+		val successes = history.first
+		val attempts = history.second
+
+		// Beta distribution parameters
+		val alpha = successes + 1.0
+		val beta = (attempts - successes) + 1.0
+
+		// Sample from Beta distribution (simplified using mean + exploration)
+		val mean = alpha / (alpha + beta)
+		val variance = (alpha * beta) / ((alpha + beta) * (alpha + beta) * (alpha + beta + 1))
+		val exploration = kotlin.math.sqrt(variance) * thompsonExplorationWeight
+
+		// Add random exploration factor
+		val randomFactor = (kotlin.random.Random.nextDouble() - 0.5) * exploration
+		val thompsonSample = (mean + randomFactor).coerceIn(0.0, 1.0)
+
+		// Combine with expected value
+		val expectedValue = calculateImmediateValue(training)
+		val score = thompsonSample * expectedValue
+
+		if (attempts < 3) {
+			printToLog("[THOMPSON] ${training.name}: Exploration mode (${attempts} attempts) - score: ${score.toInt()}")
+		}
+
+		return score
+	}
+
+	/**
+	 * UCB1 algorithm for exploration bonus.
+	 * Balances exploitation with exploration through upper confidence bound.
+	 */
+	private fun calculateUCBBonus(training: Training): Double {
+		val trainingCount = historicalTrainingCounts.getOrDefault(training.name, 0)
+
+		// Unexplored training gets maximum bonus
+		if (trainingCount == 0) {
+			return 1000.0
+		}
+
+		// UCB1 formula: exploitation + exploration
+		val avgValue = trainingValueHistory.getOrDefault(training.name, 100.0)
+		val explorationBonus = kotlin.math.sqrt(
+			2 * kotlin.math.ln(totalTrainingsDone.toDouble().coerceAtLeast(1.0)) / trainingCount
+		)
+
+		val ucbScore = avgValue + ucbExplorationParam * explorationBonus * 100
+
+		if (explorationBonus > 0.5) {
+			printToLog("[UCB1] ${training.name}: Exploration bonus ${(explorationBonus * 100).toInt()} - total: ${ucbScore.toInt()}")
+		}
+
+		return ucbScore
+	}
+
+	/**
+	 * Dynamic Programming value function.
+	 * Considers both immediate and future value of training decisions.
+	 */
+	private fun calculateDynamicValue(training: Training): Double {
+		val turnsRemaining = estimateTurnsRemaining()
+		val immediateValue = calculateImmediateValue(training)
+		val futureValue = calculateFutureValue(training, turnsRemaining)
+
+		val totalValue = immediateValue + discountFactor * futureValue
+
+		if (futureValue > 50) {
+			printToLog("[DP] ${training.name}: Immediate: ${immediateValue.toInt()}, Future: ${futureValue.toInt()}, Total: ${totalValue.toInt()}")
+		}
+
+		return totalValue
+	}
+
+	/**
+	 * Calculate immediate value of a training.
+	 */
+	private fun calculateImmediateValue(training: Training): Double {
+		var value = 0.0
+
+		// Base stat value with level multiplier
+		val currentLevel = trainingLevels.getOrDefault(training.name, 1)
+		val levelBonus = levelMultipliers[currentLevel] ?: 1.0
+		val statValue = training.statGains.sum() * levelBonus
+
+		// Deficit-based priority
+		val statIndex = trainings.indexOf(training.name)
+		val currentStat = currentStatsMap.getOrDefault(training.name, 0)
+		val target = statTargets.getOrElse(statIndex) { 600 }
+		val completion = if (target > 0) currentStat.toDouble() / target else 1.0
+
+		val deficitMultiplier = when {
+			completion < 0.3 -> 4.0
+			completion < 0.5 -> 3.0
+			completion < 0.7 -> 2.0
+			completion < 0.85 -> 1.5
+			completion < 1.0 -> 1.2
+			else -> 0.8
+		}
+
+		value += statValue * deficitMultiplier
+
+		// Relationship value
+		val blueBars = training.relationshipBars.count { it.dominantColor == "blue" }
+		val totalBars = training.relationshipBars.size
+		value += blueBars * 50 + totalBars * 20
+
+		// Success rate adjustment
+		val successRate = (100 - training.failureChance) / 100.0
+		value *= successRate
+
+		return value
+	}
+
+	/**
+	 * Calculate future value of training (for Dynamic Programming).
+	 */
+	private fun calculateFutureValue(training: Training, turnsRemaining: Int): Double {
+		if (turnsRemaining <= 0) return 0.0
+
+		var futureValue = 0.0
+		val levelProgress = trainingCountForLevel.getOrDefault(training.name, 0)
+		val currentLevel = trainingLevels.getOrDefault(training.name, 1)
+
+		// Value of leveling up
+		if (levelProgress + 1 >= trainingsPerLevel && currentLevel < maxTrainingLevel) {
+			val nextLevelBonus = levelMultipliers[currentLevel + 1] ?: 1.0
+			val currentLevelBonus = levelMultipliers[currentLevel] ?: 1.0
+			val bonusIncrease = nextLevelBonus - currentLevelBonus
+
+			// Estimate future trainings of this type
+			val expectedFutureUses = kotlin.math.min(4.0, turnsRemaining / 8.0)
+			val baseStatGain = training.statGains[trainings.indexOf(training.name)]
+
+			futureValue += expectedFutureUses * baseStatGain * bonusIncrease * 100
+			printToLog("[DP-FUTURE] ${training.name} will level to ${currentLevel + 1}, future bonus: ${futureValue.toInt()}")
+		}
+
+		// Value of maintaining balance for URA finals
+		if (turnsRemaining < 10 && statPrioritization.indexOf(training.name) <= 2) {
+			futureValue += 50  // Bonus for priority stats near end
+		}
+
+		return futureValue
+	}
+
+	/**
+	 * Estimate remaining turns in the campaign.
+	 */
+	private fun estimateTurnsRemaining(): Int {
+		val totalTurns = 72  // 3 years * 24 turns/year
+		val currentTurn = currentDate.turnNumber
+		return (totalTurns - currentTurn).coerceAtLeast(0)
+	}
+
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Functions to check what screen the bot is at.
@@ -606,7 +1087,6 @@ class Game(val myContext: Context) {
 
 			// Perform updates here if necessary.
 			updateDate()
-			if (preferredDistance == "") updatePreferredDistance()
 			true
 		} else if (!enablePopupCheck && imageUtils.findImage("cancel", tries = 1, region = imageUtils.regionBottomHalf).first != null &&
 			imageUtils.findImage("race_confirm", tries = 1, region = imageUtils.regionBottomHalf).first != null) {
@@ -675,6 +1155,7 @@ class Game(val myContext: Context) {
 
 	/**
 	 * Checks if the day number is odd to be eligible to run an extra race, excluding Summer where extra racing is not allowed.
+	 * Now with smarter decision making based on energy, mood, and game phase.
 	 *
 	 * @return True if the day number is odd. Otherwise false.
 	 */
@@ -683,6 +1164,37 @@ class Game(val myContext: Context) {
 		printToLog("\n[INFO] Current remaining number of days before the next mandatory race: $dayNumber.")
 		// If the setting to force racing extra races is enabled, always return true.
 		if (enableForceRacing) return true
+
+		// Check if we're near important events
+		val turnsUntilCamp = getTurnsUntilTrainingCamp()
+		val turnsUntilURA = getTurnsUntilURAFinals()
+
+		// Don't run extra races if important events are approaching
+		if (turnsUntilCamp in 1..2) {
+			printToLog("[RACE] Training camp in $turnsUntilCamp turns - skipping extra race to save energy")
+			return false
+		}
+
+		if (turnsUntilURA in 1..3) {
+			printToLog("[RACE] URA Finals in $turnsUntilURA turns - focusing on training instead of extra races")
+			return false
+		}
+
+		// Estimate current energy from training failure rates
+		val avgFailureRate = trainingMap.values
+			.filter { it.failureChance >= 0 }
+			.map { it.failureChance }
+			.average()
+
+		val estimatedEnergy = if (!avgFailureRate.isNaN()) {
+			(50 - avgFailureRate * 2).coerceIn(0.0, 100.0)
+		} else 60.0
+
+		// Skip extra race if energy is too low
+		if (estimatedEnergy < 40) {
+			printToLog("[RACE] Energy too low (~${estimatedEnergy.toInt()}%) - skipping extra race")
+			return false
+		}
 
 		if (speRaces.contains(currentDate) && !raceRepeatWarningCheck ) return true
 
@@ -707,34 +1219,106 @@ class Game(val myContext: Context) {
 	}
 
 	/**
-	 * Checks if the bot has a injury.
+	 * Checks if the bot has an injury or bad condition.
+	 * Uses infirmary whenever it's available (indicates a bad condition is present).
 	 *
-	 * @return True if the bot has a injury. Otherwise false.
+	 * @return True if infirmary was used. Otherwise false.
 	 */
 	fun checkInjury(): Boolean {
+		// First check if infirmary button is available and clickable
 		val recoverInjuryLocation = imageUtils.findImage("recover_injury", tries = 1, region = imageUtils.regionBottomHalf).first
-		return if (recoverInjuryLocation != null && imageUtils.checkColorAtCoordinates(
+
+		if (recoverInjuryLocation != null) {
+			// Check if the infirmary button is actually clickable (not grayed out)
+			val isClickable = imageUtils.checkColorAtCoordinates(
 				recoverInjuryLocation.x.toInt(),
 				recoverInjuryLocation.y.toInt() + 15,
 				intArrayOf(151, 105, 243),
 				10
-			)) {
-			if (findAndTapImage("recover_injury", tries = 1, region = imageUtils.regionBottomHalf)) {
-				wait(0.3)
-				if (imageUtils.confirmLocation("recover_injury", tries = 1, region = imageUtils.regionMiddle)) {
-					printToLog("\n[INFO] Injury detected and attempted to heal.")
-					true
+			)
+
+			if (isClickable) {
+				// Infirmary is available - use it regardless of what condition we have
+				printToLog("\n[INFIRMARY] Infirmary available - indicates bad condition present")
+
+				// Track what turn/year we're using infirmary for analysis
+				if (currentDate.year == 3) {
+					printToLog("[INFIRMARY] Year 3 - Using infirmary immediately for any bad condition")
+				} else if (currentDate.year == 2 && currentDate.month >= 6) {
+					printToLog("[INFIRMARY] Mid Year 2+ - Using infirmary to maintain performance")
+				}
+
+				if (findAndTapImage("recover_injury", tries = 1, region = imageUtils.regionBottomHalf)) {
+					wait(0.3)
+					if (imageUtils.confirmLocation("recover_injury", tries = 1, region = imageUtils.regionMiddle)) {
+						printToLog("[INFIRMARY] Successfully used infirmary to cure bad condition")
+
+						// Note: Bad conditions include:
+						// - Practice Poor (+2% failure rate)
+						// - Night Owl (random -10 energy)
+						// - Migraine (mood cannot increase)
+						// - Slacker (may skip training)
+						// - Slow Metabolism (speed cannot increase)
+						// - Dry Skin (random mood decrease)
+
+						return true
+					} else {
+						return false
+					}
 				} else {
-					false
+					printToLog("[WARNING] Infirmary available but tap failed")
+					return false
 				}
 			} else {
-				printToLog("\n[WARNING] Injury detected but attempt to rest failed.")
-				false
+				// Infirmary button exists but is grayed out (no conditions to cure)
+				printToLog("\n[INFO] No injuries or bad conditions detected (infirmary grayed out)")
+				return false
 			}
 		} else {
-			printToLog("\n[INFO] No injury detected.")
-			false
+			// No infirmary button found at all
+			printToLog("\n[INFO] No injury/infirmary option found")
+			return false
 		}
+	}
+
+	/**
+	 * Simple check if we should prioritize using infirmary based on game phase.
+	 * In late game, we always use infirmary when available.
+	 * In early game, we might skip it to save turns.
+	 */
+	private fun shouldPrioritizeInfirmary(): Boolean {
+		return when {
+			// Always use in Year 3 - every bad condition hurts our final push
+			currentDate.year == 3 -> true
+
+			// Use in late Year 2 - preparing for Year 3
+			currentDate.year == 2 && currentDate.month >= 9 -> true
+
+			// During training camps - maximize the Lv5 training value
+			isInSummerTraining() || isInWinterTraining() -> true
+
+			// Before important races/URA qualifiers
+			currentDate.month == 12 || currentDate.month == 6 -> true
+
+			// Otherwise only if we have low energy (bad conditions drain resources)
+			getEstimatedEnergy() < 50 -> true
+
+			else -> false
+		}
+	}
+
+	/**
+	 * Gets estimated current energy based on average failure rates.
+	 * Used to decide if we should prioritize infirmary use.
+	 */
+	private fun getEstimatedEnergy(): Double {
+		if (trainingMap.isEmpty()) return 50.0 // Default assumption
+
+		val avgFailure = trainingMap.values.map { it.failureChance }.average()
+		// Reverse engineer energy from failure rate
+		// Failure% = max(0, (50 - Energy) * 0.5)
+		// So Energy = 50 - (Failure% * 2)
+		return maxOf(0.0, 50.0 - (avgFailure * 2))
 	}
 
 	/**
@@ -765,6 +1349,9 @@ class Game(val myContext: Context) {
 	fun handleTraining() {
 		printToLog("\n[TRAINING] Starting Training process...")
 
+		// Track skill points periodically
+		trackSkillPoints()
+
 		// Enter the Training screen.
 		if (findAndTapImage("training_option", region = imageUtils.regionBottomHalf)) {
 			// Acquire the percentages and stat gains for each training.
@@ -778,7 +1365,8 @@ class Game(val myContext: Context) {
 
 				if (checkMainScreen()) {
 					printToLog("[TRAINING] Will recover energy due to either failure chance was high enough to do so or no failure chances were detected via OCR.")
-					recoverEnergy()
+					// Force rest when trainingMap is empty - this means we explicitly need to rest
+					recoverEnergy(forceRest = true)
 				} else {
 					printToLog("[ERROR] Could not head back to the Main screen in order to recover energy.")
 				}
@@ -819,37 +1407,89 @@ class Game(val myContext: Context) {
 	}
 	
 	/**
-	 * Determines if we should prioritize recovery based on multiple factors.
+	 * Determines if we should prioritize recovery based on failure rates.
 	 * Returns true if recovery (rest or Wit training) should be prioritized.
 	 */
 	private fun shouldPrioritizeRecovery(avgFailureRate: Double, estimatedEnergy: Double): Boolean {
-		// Check multiple conditions for recovery need
+		// More nuanced recovery decision based on multiple factors
+
+		// If we have max energy (0% failures), don't prioritize recovery
+		// This prevents resting at 100% energy with 0% failure rates
+		if (avgFailureRate <= 5 && estimatedEnergy >= 85) {
+			printToLog("[RECOVERY] High energy detected (~${estimatedEnergy.toInt()}%), no recovery needed")
+			return false
+		}
+
+		// URA Finals happens AFTER Late December Year 3
+		// Late December Year 3 is the last training opportunity before URA Finals
+		// Don't force rest if we have decent energy on this crucial last turn
+		if (currentDate.year == 3 && currentDate.month == 12 && currentDate.phase == "Late" && estimatedEnergy >= 40) {
+			printToLog("[RECOVERY] Last turn before URA Finals! Energy ~${estimatedEnergy.toInt()}%, allowing training")
+			return false
+		}
+
+		// Count trainings at different risk levels
+		val trainingsUnder10 = trainingMap.values.count { it.failureChance in 0..10 }
+		val trainingsUnder20 = trainingMap.values.count { it.failureChance in 0..20 }
+		val trainingsUnder30 = trainingMap.values.count { it.failureChance in 0..30 }
+
+		// Evaluate high-value trainings that might be worth the risk
+		val exceptionalTrainings = trainingMap.values.filter { training ->
+			val friendCount = training.relationshipBars.count { it.fillPercent >= 80 }
+			val statValue = training.statGains.sum()
+			val riskRewardRatio = calculateRiskRewardRatio(training)
+
+			// Worth taking risk if:
+			// - Multiple friends OR high stats
+			// - Good risk-reward ratio
+			training.failureChance in 20..35 &&
+			(friendCount >= 2 || statValue > 70 || riskRewardRatio > 50)
+		}
+
+		// Dynamic recovery threshold based on game phase
+		val recoveryThreshold = when {
+			// Early game: more tolerant of risk for relationships
+			currentDate.year == 1 -> 35
+			// Mid game: balanced approach
+			currentDate.year == 2 -> 30
+			// Late game: conservative for stat gains
+			currentDate.year == 3 -> 25
+			else -> 30
+		}
+
+		// Check camp timing
+		val turnsUntilCamp = getTurnsUntilTrainingCamp()
+		val preCampRecovery = turnsUntilCamp in 1..2 && estimatedEnergy < 60
+
 		val needsRecovery = when {
-			// Critical energy - must recover
-			estimatedEnergy < 15 -> {
-				printToLog("[RECOVERY] Critical energy level (~${estimatedEnergy.toInt()}%) - MUST recover")
+			// Pre-camp energy management
+			preCampRecovery -> {
+				printToLog("[RECOVERY] Training camp in $turnsUntilCamp turns. Building energy (currently ~${estimatedEnergy.toInt()}%)")
 				true
 			}
-			// Very high failure rates across the board
-			avgFailureRate > 40 -> {
-				printToLog("[RECOVERY] Very high average failure rate (${avgFailureRate.toInt()}%) - should recover")
+			// No viable options at all (but only if we don't have high energy already)
+			trainingsUnder30 == 0 && exceptionalTrainings.isEmpty() && estimatedEnergy < 80 -> {
+				printToLog("[RECOVERY] No trainings under 30% and no exceptional options")
 				true
 			}
-			// Low energy and no high-value trainings available
-			estimatedEnergy < 30 && trainingMap.values.none { 
-				it.failureChance <= 15 && (it.relationshipBars.size >= 2 || it.statGains.sum() > 50)
-			} -> {
-				printToLog("[RECOVERY] Low energy with no high-value safe options - should recover")
+			// Very limited safe options (but only if energy isn't already high)
+			trainingsUnder20 == 0 && exceptionalTrainings.size < 2 && estimatedEnergy < 70 -> {
+				printToLog("[RECOVERY] No safe options and limited exceptional trainings")
 				true
 			}
-			// Consecutive failures detected (if we could track this)
-			historicalTrainingCounts.getOrDefault("Rest", 0) == 0 && estimatedEnergy < 25 -> {
-				printToLog("[RECOVERY] Haven't rested recently and energy is low - consider recovery")
+			// Average failure too high with no mitigation
+			avgFailureRate > recoveryThreshold && trainingsUnder10 == 0 -> {
+				printToLog("[RECOVERY] High avg failure (${avgFailureRate.toInt()}%) with no low-risk options")
 				true
 			}
 			else -> false
 		}
 		
+		if (!needsRecovery) {
+			val viableOptions = trainingsUnder20 + exceptionalTrainings.size
+			printToLog("[RECOVERY] $viableOptions viable training options available - continuing")
+		}
+
 		return needsRecovery
 	}
 	
@@ -858,54 +1498,128 @@ class Game(val myContext: Context) {
 	 * Higher values mean better risk-reward ratio.
 	 */
 	private fun calculateRiskRewardRatio(training: Training): Double {
-		// Calculate total value of the training
-		val statValue = training.statGains.sum()
-		val relationshipValue = training.relationshipBars.size * 30
-		val friendshipBonusValue = training.relationshipBars.count { it.fillPercent >= 80 } * 50
-		val totalValue = statValue + relationshipValue + friendshipBonusValue
-		
-		// Calculate risk factor (higher failure = higher risk)
+		// Enhanced stat value calculation with percentage-based completion awareness
+		val statIndex = trainings.indexOf(training.name)
+		val currentStat = currentStatsMap.getOrDefault(training.name, 0)
+		val targetStat = statTargets.getOrElse(statIndex) { 600 }
+		val completionPercent = if (targetStat > 0) (currentStat.toDouble() / targetStat * 100) else 100.0
+
+		// Percentage-based deficit multiplier for smoother progression
+		val deficitMultiplier = when {
+			completionPercent < 30 -> 4.5   // Less than 30% complete - extreme priority
+			completionPercent < 50 -> 3.5   // Less than 50% complete - critical
+			completionPercent < 70 -> 2.5   // Less than 70% complete - high
+			completionPercent < 85 -> 1.8   // Less than 85% complete - moderate
+			completionPercent < 100 -> 1.3  // Almost complete - low priority
+			completionPercent >= 100 -> {
+				// Even if complete, consider if training provides exceptional value
+				val totalStatGain = training.statGains.sum()
+				if (totalStatGain > 80) 1.0      // Very high stat gain - still worth considering
+				else if (totalStatGain > 60) 0.7 // High stat gain - reduced value
+				else 0.4  // Normal gain - significantly reduced
+			}
+			else -> 0.5  // Significantly over target
+		}
+		val adjustedStatValue = training.statGains.sum() * deficitMultiplier
+
+		// Enhanced relationship value with blue bar priority
+		val blueBars = training.relationshipBars.count { it.dominantColor == "blue" }
+		val highFillBars = training.relationshipBars.count { it.fillPercent >= 80 }
+		val relationshipValue = blueBars * 60 + highFillBars * 40 + training.relationshipBars.size * 20
+
+		// Rainbow training detection and bonus
+		val rainbowBonus = when {
+			highFillBars >= 3 -> 150.0  // Exceptional rainbow training
+			blueBars >= 3 -> 120.0      // Multiple blue bars
+			highFillBars >= 2 -> 60.0   // Good multi-friend training
+			else -> 0.0
+		}
+
+		val totalValue = adjustedStatValue + relationshipValue + rainbowBonus
+
+		// Refined risk factor with smoother progression
 		val riskFactor = when {
 			training.failureChance <= 5 -> 1.0   // Minimal risk
-			training.failureChance <= 10 -> 1.2  // Low risk
-			training.failureChance <= 15 -> 1.5  // Moderate risk
-			training.failureChance <= 20 -> 2.0  // High risk
-			training.failureChance <= 25 -> 3.0  // Very high risk
-			else -> 5.0  // Extreme risk
+			training.failureChance <= 10 -> 1.1  // Low risk
+			training.failureChance <= 15 -> 1.3  // Moderate risk
+			training.failureChance <= 20 -> 1.6  // High risk
+			training.failureChance <= 25 -> 2.2  // Very high risk
+			training.failureChance <= 30 -> 3.0  // Extreme risk
+			else -> 5.0  // Unacceptable risk
 		}
-		
-		// Risk-reward ratio: value divided by risk
-		val ratio = totalValue / riskFactor
-		
-		// Apply phase-based adjustments
+
+		// Risk-reward ratio with value divided by risk
+		val baseRatio = totalValue / riskFactor
+
+		// Enhanced phase-based adjustments
 		val phaseMultiplier = when {
-			// Early game: prioritize relationships even with some risk
-			currentDate.year == 1 && training.relationshipBars.isNotEmpty() -> 1.3
-			// Late game: prioritize safe stat gains
+			// Year 1: Prioritize relationships even with moderate risk
+			currentDate.year == 1 && blueBars > 0 -> 1.4
+			currentDate.year == 1 && training.relationshipBars.isNotEmpty() -> 1.2
+			// Year 2: Balanced approach
+			currentDate.year == 2 && highFillBars >= 2 -> 1.3
+			// Year 3: Prioritize safe high-stat gains
+			currentDate.year == 3 && training.statGains.sum() > 50 && training.failureChance <= 15 -> 1.3
 			currentDate.year == 3 && training.failureChance <= 10 -> 1.2
+			// Training camp bonus
+			isInSummerTraining() || isInWinterTraining() -> 1.25
 			else -> 1.0
 		}
-		
-		return ratio * phaseMultiplier
+
+		return baseRatio * phaseMultiplier
 	}
 	
 	/**
 	 * Evaluates if Wit training is worth doing over resting.
-	 * Considers multiple turns of Wit vs one rest for better decision making.
+	 * Enhanced with better compound value calculation and context awareness.
 	 */
 	private fun evaluateWitVsRest(witTraining: Training?, estimatedEnergy: Double): Boolean {
 		if (witTraining == null) return false
-		
-		// Check if summer is approaching (Early June = 2 turns before Late June summer)
-		val isSummerApproaching = currentDate.month == 6 && currentDate.phase == "Early"
-		if (isSummerApproaching && estimatedEnergy < 70) {
-			printToLog("[WIT VS REST] Summer training approaching in 2 turns. Energy low (~${estimatedEnergy.toInt()}%), prioritizing Rest for Lv5 training benefits")
-			return false  // Always rest before summer if energy is not high
+
+		// Check if we're currently IN a training camp (last turn of camp)
+		val isLastDayOfSummerCamp = currentDate.month == 7 && currentDate.phase == "Late"
+		val isLastDayOfWinterCamp = currentDate.month == 1 && currentDate.phase == "Late"
+		val isLastDayOfTrainingCamp = isLastDayOfSummerCamp || isLastDayOfWinterCamp
+
+		// Special handling for LAST DAY of training camp
+		if (isLastDayOfTrainingCamp) {
+			// Check current mood (would need to be detected earlier in the turn)
+			// For now, we'll assume mood is good if energy is high
+			val likelyHasGoodMood = estimatedEnergy >= 60
+
+			if (likelyHasGoodMood && witTraining.failureChance <= 30) {
+				printToLog("[TRAINING CAMP] LAST DAY of camp! Mood likely Great, prioritizing Lv5 Wit training")
+				printToLog("[TRAINING CAMP] Wit has ${witTraining.failureChance}% failure - acceptable for Lv5 benefits")
+				printToLog("[TRAINING CAMP] Stats: ${witTraining.statGains.sum()}, Friends: ${witTraining.relationshipBars.size}")
+				return true  // Do Wit training to maximize Lv5 benefits
+			} else if (witTraining.failureChance > 30) {
+				printToLog("[TRAINING CAMP] Last day but Wit failure too high (${witTraining.failureChance}%) - will rest")
+				return false
+			}
+		}
+
+		// Check if training camp is approaching (summer or winter) - more aggressive preparation
+		val turnsUntilCamp = getTurnsUntilTrainingCamp()
+		val isTrainingCampApproaching = turnsUntilCamp in 1..3  // Extended preparation window
+
+		if (isTrainingCampApproaching) {
+			// More aggressive energy preparation for camps
+			val targetEnergy = when (turnsUntilCamp) {
+				1 -> 80  // Next turn is camp - need very high energy
+				2 -> 65  // 2 turns away - build energy aggressively
+				3 -> 55  // 3 turns away - start preparation
+				else -> 50
+			}
+
+			if (estimatedEnergy < targetEnergy) {
+				printToLog("[WIT VS REST] Training camp in $turnsUntilCamp turns. Energy (~${estimatedEnergy.toInt()}%) below target ($targetEnergy%), prioritizing Rest")
+				return false
+			}
 		}
 		
 		// Check if we've already reached Wit stat target
 		val currentWit = currentStatsMap.getOrDefault("Wit", 0)
-		val witTarget = statTargetsByDistance[preferredDistance]?.getOrNull(4) ?: 600
+		val witTarget = statTargets.getOrNull(4) ?: 600
 		val witDeficit = witTarget - currentWit
 		
 		// Get the actual Wit stat gain from the training
@@ -914,12 +1628,11 @@ class Game(val myContext: Context) {
 		// If we're at or above target, only do Wit if it provides exceptional value
 		if (witDeficit <= 0) {
 			// We've exceeded the target
-			val hasGreatFriendships = witTraining.relationshipBars.count { it.fillPercent >= 80 } >= 2
+			val totalFriendships = witTraining.relationshipBars.count { it.fillPercent >= 80 }
 			val hasLowFailure = witTraining.failureChance <= 10
-			val hasExceptionalValue = witTraining.statGains.sum() >= 60 || 
-									   witTraining.relationshipBars.size >= 3
+			val hasExceptionalValue = witTraining.statGains.sum() >= 60 || totalFriendships >= 3
 			
-			if (!hasExceptionalValue && !hasGreatFriendships) {
+			if (!hasExceptionalValue && totalFriendships < 2) {
 				printToLog("[WIT VS REST] Wit stat already at target ($currentWit/$witTarget). Rest is better unless exceptional value.")
 				return false
 			}
@@ -929,80 +1642,140 @@ class Game(val myContext: Context) {
 			if (witStatGain >= witDeficit * 2) {
 				// This would overshoot significantly
 				printToLog("[WIT VS REST] Wit training would overshoot target significantly ($currentWit + $witStatGain vs $witTarget)")
-				// Only do it if it has other great benefits
-				if (witTraining.relationshipBars.count { it.fillPercent >= 80 } < 2 && 
-					witTraining.failureChance > 15) {
+				// Only do it if it has other great benefits (friendships or low failure)
+				val totalFriendships = witTraining.relationshipBars.count { it.fillPercent >= 80 }
+				if (totalFriendships < 2 && witTraining.failureChance > 15) {
 					return false
 				}
 			}
 		}
 		
-		// Calculate the value of Wit training
+		// Enhanced compound value calculation for Wit training
 		val witStatValue = witTraining.statGains.sum()
-		val witRelationshipValue = witTraining.relationshipBars.size * 20
-		val witFriendshipValue = witTraining.relationshipBars.count { it.fillPercent >= 80 } * 40
-		val witEnergyRecovery = 5  // Wit recovers ~5 energy
+		val witRelationshipValue = witTraining.relationshipBars.size * 25  // Increased base value
+		val witNonMaxedFriendships = witTraining.relationshipBars.count { it.fillPercent >= 80 && it.fillPercent < 100 }
+		val witMaxedFriendships = witTraining.relationshipBars.count { it.fillPercent >= 100 }
+		val witBlueBars = witTraining.relationshipBars.count { it.dominantColor == "blue" }
+
+		// Enhanced year-based friendship valuation with blue bar consideration
+		val witFriendshipValue = when (currentDate.year) {
+			1 -> {
+				// Year 1: Blue bars extremely valuable for relationship building
+				witBlueBars * 40 + witNonMaxedFriendships * 30 + witMaxedFriendships * 20
+			}
+			2 -> {
+				// Year 2: Balanced value with emphasis on finishing relationships
+				witBlueBars * 30 + witNonMaxedFriendships * 25 + witMaxedFriendships * 25
+			}
+			3 -> {
+				// Year 3: Maxed relationships provide stat bonuses
+				witBlueBars * 20 + witNonMaxedFriendships * 20 + witMaxedFriendships * 35
+			}
+			else -> witBlueBars * 25 + witNonMaxedFriendships * 25 + witMaxedFriendships * 25
+		}
+		// Don't count Wit's energy recovery in our calculations - user requested this
+		// Wit recovers ~5 energy but we'll evaluate it purely on training value
+		val witEnergyRecovery = 0  // Ignoring energy recovery per user request
 		
 		// Reduce value if we're already at/near Wit target
 		val witTargetMultiplier = when {
-			witDeficit <= 0 -> 0.3  // Already exceeded target
-			witDeficit <= 50 -> 0.5  // Very close to target
-			witDeficit <= 100 -> 0.7  // Close to target
+			witDeficit <= 0 -> 0.1  // Already exceeded target - drastically reduce priority
+			witDeficit <= 50 -> 0.25  // Very close to target - significantly reduce
+			witDeficit <= 100 -> 0.5  // Close to target - moderately reduce
 			else -> 1.0  // Still need Wit
 		}
 		
 		// Total value per Wit training (adjusted for target proximity)
 		val witValuePerTurn = (witStatValue * witTargetMultiplier + witRelationshipValue + witFriendshipValue).toInt()
 		
-		// Calculate how many Wit trainings would equal one rest
-		// Rest recovers ~40 energy, Wit recovers ~5, so 8 Wit trainings = 1 rest in energy
-		// But we need to consider failure risk over multiple turns
+		// Compare Wit training value vs Rest value without considering energy recovery
+		// User requested not to count Wit's energy recovery in calculations
+		// We'll evaluate purely based on stat and friendship gains
 		val witSuccessRate = (100 - witTraining.failureChance) / 100.0
 		
 		// Expected value over multiple turns (considering failure chance)
 		val expectedWitValue = witValuePerTurn * witSuccessRate
 		
 		// Rest value: Full energy recovery allows for better trainings later
-		// Estimate the value of future trainings with full energy
+		// Dynamic rest value based on context
 		val restValue = when {
-			isSummerApproaching && estimatedEnergy < 70 -> 200  // Pre-summer rest is extremely valuable
-			estimatedEnergy < 20 -> 150  // Critical energy - rest is very valuable
-			estimatedEnergy < 30 -> 100  // Low energy - rest is valuable
-			estimatedEnergy < 40 -> 50   // Moderate energy - rest has some value
-			else -> 30  // Good energy - rest is less valuable
+			turnsUntilCamp == 1 && estimatedEnergy < 75 -> 400  // Must rest before camp
+			turnsUntilCamp == 2 && estimatedEnergy < 60 -> 300  // Pre-camp preparation critical
+			estimatedEnergy < 20 -> 250  // Critical energy
+			estimatedEnergy < 30 -> 180  // Low energy
+			estimatedEnergy < 40 -> 120  // Moderate energy
+			estimatedEnergy < 50 -> 80   // Decent energy
+			else -> 40  // Good energy
 		}
 		
-		// Decision factors
+		// Enhanced decision factors with better context awareness
 		val shouldDoWit = when {
-			// Never do Wit if failure is too high
-			witTraining.failureChance > 40 -> false
-			
-			// Always rest if energy is critical and Wit has no friends
-			estimatedEnergy < 15 && witTraining.relationshipBars.isEmpty() -> false
-			
-			// Do Wit if it has multiple high-value friendships
-			witTraining.relationshipBars.count { it.fillPercent >= 80 } >= 2 && witTraining.failureChance <= 25 -> true
-			
-			// Do Wit if good stats and low failure
-			witStatValue >= 50 && witTraining.failureChance <= 15 -> true
-			
-			// Do Wit if it has good overall value and acceptable risk
-			expectedWitValue > 40 && witTraining.failureChance <= 20 -> true
-			
-			// Rest if Wit has minimal value
-			witValuePerTurn < 20 -> false
-			
-			// Compare expected values
-			else -> expectedWitValue * 3 > restValue  // 3 Wit turns vs 1 rest
+			// Hard cap at 22% failure rate (with very rare exceptions)
+			witTraining.failureChance > 22 -> {
+				// Only allow higher failure in extreme circumstances
+				val hasExceptionalValue = witBlueBars >= 4 ||
+					(witNonMaxedFriendships + witMaxedFriendships) >= 5 ||
+					witTraining.statGains.sum() > 100
+				hasExceptionalValue && witTraining.failureChance <= 25
+			}
+
+			// Critical energy management
+			estimatedEnergy < 20 -> {
+				// Only consider Wit in extreme circumstances
+				val isLastTurnBeforeURA = currentDate.year == 3 && currentDate.month == 12 && currentDate.phase == "Late"
+				val hasExceptionalValue = witBlueBars >= 3 || (witNonMaxedFriendships + witMaxedFriendships) >= 4
+				!isLastTurnBeforeURA && hasExceptionalValue && witTraining.failureChance <= 15
+			}
+
+			// Rainbow training detection - high value multi-friendship training
+			witBlueBars >= 3 && witTraining.failureChance <= 25 -> {
+				printToLog("[WIT VS REST] Rainbow training detected with $witBlueBars blue bars!")
+				true
+			}
+
+			// Always rest if Wit target is exceeded significantly and energy is moderate
+			witDeficit <= -100 && estimatedEnergy < 60 -> false
+
+			// High-value blue bar training in Year 1
+			currentDate.year == 1 && witBlueBars >= 2 && witTraining.failureChance <= 20 -> true
+
+			// Multiple friendships with good stats
+			(witNonMaxedFriendships + witMaxedFriendships) >= 3 && witStatValue >= 40 && witTraining.failureChance <= 20 -> true
+
+			// Excellent stats with low risk
+			witStatValue >= 60 && witTraining.failureChance <= 10 -> true
+
+			// Good compound value
+			expectedWitValue > 80 && witTraining.failureChance <= 15 -> true
+
+			// Minimal value threshold
+			witValuePerTurn < 40 -> false
+
+			// Enhanced comparison with rest value
+			else -> {
+				// Consider energy state and game phase
+				val multiplier = when {
+					currentDate.year == 1 && witBlueBars > 0 -> 2.5  // Favor Wit with blue bars in Year 1
+					estimatedEnergy < 40 -> 1.5  // Favor rest when energy is low
+					else -> 2.0  // Standard comparison
+				}
+				expectedWitValue * multiplier > restValue
+			}
 		}
 		
 		if (shouldDoWit) {
 			printToLog("[WIT VS REST] Wit training is worth doing: ${witValuePerTurn} value/turn, ${witTraining.failureChance}% failure")
 			printToLog("[WIT VS REST] Current Wit: $currentWit/$witTarget (deficit: $witDeficit)")
+			val friendshipNote = when (currentDate.year) {
+				3 -> "Year 3 - maxed friendships provide max stat bonus"
+				1 -> "Year 1 - non-maxed friendships are priority for progress"
+				else -> "Balanced value from both"
+			}
+			printToLog("[WIT VS REST] Friendships: $witNonMaxedFriendships non-maxed, $witMaxedFriendships maxed ($friendshipNote)")
 		} else {
 			printToLog("[WIT VS REST] Rest is better: Wit only provides ${witValuePerTurn} value at ${witTraining.failureChance}% failure")
-			if (isSummerApproaching && estimatedEnergy < 70) {
-				printToLog("[WIT VS REST] Pre-summer preparation: Resting to maximize Lv5 training benefits")
+			if (isTrainingCampApproaching && estimatedEnergy < 70) {
+				printToLog("[WIT VS REST] Pre-camp preparation: Resting to maximize Lv5 training benefits")
 			} else if (witDeficit <= 0) {
 				printToLog("[WIT VS REST] Wit target already reached: $currentWit/$witTarget")
 			}
@@ -1041,11 +1814,14 @@ class Game(val myContext: Context) {
 			}
 
 			// Early exit if initial failure is very high - likely all trainings will be high
+			// But don't exit early if we have low failure (high energy)
 			if (!test && initialFailureChance > 50) {
 				printToLog("[TRAINING] Initial failure chance is very high (${initialFailureChance}%). All trainings likely have high failure.")
 				printToLog("[TRAINING] Going to rest instead of checking all trainings.")
 				trainingMap.clear()  // Clear map to trigger rest
 				return
+			} else if (initialFailureChance <= 10) {
+				printToLog("[TRAINING] Initial failure chance is very low (${initialFailureChance}%). Energy is likely high.")
 			}
 			
 			// Analyze all trainings once to make informed decisions
@@ -1194,11 +1970,27 @@ class Game(val myContext: Context) {
 				// After analyzing all trainings, decide what to do
 				printToLog("[TRAINING] Process to analyze all 5 Trainings complete.")
 				
-				// Count friendship trainings available
+				// Count friendship trainings available (80%+ friendships provide stat bonuses)
 				val friendshipTrainingCount = trainingMap.values.count { training ->
 					training.relationshipBars.any { bar -> bar.fillPercent >= 80 }
 				}
 				
+				// Separate counts for better decision making
+				val nonMaxedFriendshipCount = trainingMap.values.count { training ->
+					training.relationshipBars.any { bar -> bar.fillPercent >= 80 && bar.fillPercent < 100 }
+				}
+
+				val maxedFriendshipCount = trainingMap.values.count { training ->
+					training.relationshipBars.any { bar -> bar.fillPercent >= 100 }
+				}
+
+				if (maxedFriendshipCount > 0) {
+					printToLog("[TRAINING] $maxedFriendshipCount trainings have maxed friendships (100% = max stat bonus)")
+				}
+				if (nonMaxedFriendshipCount > 0) {
+					printToLog("[TRAINING] $nonMaxedFriendshipCount trainings have non-maxed friendships (80-99% = relationship progress)")
+				}
+
 				// Calculate average failure rate to understand energy state
 				val avgFailureRate = trainingMap.values
 					.filter { it.failureChance >= 0 }
@@ -1211,113 +2003,178 @@ class Game(val myContext: Context) {
 				printToLog("[TRAINING] Estimated energy: ${estimatedEnergy.toInt()}% (avg failure: ${avgFailureRate.toInt()}%)")
 				
 				// Calculate the value of the best friendship training
+				// Both maxed and non-maxed friendships are valuable, but for different reasons
 				val bestFriendshipValue = trainingMap.values
 					.filter { training -> training.relationshipBars.any { it.fillPercent >= 80 } }
 					.maxOfOrNull { training -> 
-						val friendCount = training.relationshipBars.count { it.fillPercent >= 80 }
+						val nonMaxedFriends = training.relationshipBars.count { it.fillPercent >= 80 && it.fillPercent < 100 }
+						val maxedFriends = training.relationshipBars.count { it.fillPercent >= 100 }
 						val statValue = training.statGains.sum()
-						friendCount * 50 + statValue  // Rough value calculation
+
+						// Calculate value based on context
+						val friendshipValue = when {
+							// Year 1: Relationship progress is more valuable
+							currentDate.year == 1 -> nonMaxedFriends * 60 + maxedFriends * 30 + statValue
+							// Year 2: Balanced - both are valuable
+							currentDate.year == 2 -> nonMaxedFriends * 50 + maxedFriends * 40 + statValue
+							// Year 3: Stat gains are more valuable (maxed friendships give max stats)
+							currentDate.year == 3 -> nonMaxedFriends * 40 + maxedFriends * 50 + statValue
+							else -> nonMaxedFriends * 50 + maxedFriends * 35 + statValue
+						}
+						friendshipValue
 					} ?: 0
 				
-				// Check if summer training is approaching (Late June is month 6, phase "Late")
-				val isSummerApproaching = when {
-					// 2 turns before summer: Early June (month 6, phase "Early")
+				// Check if training camp is approaching
+				// There are TWO training camps in Uma Musume that provide enhanced training benefits (Lv5 training):
+				// 1. Summer Training Camp: Starts at Late June (month 6, phase "Late") and continues into July
+				// 2. Winter Training Camp: Starts at Late December (month 12, phase "Late") and continues into January
+				// Each month has 2 phases (Early and Late), so we need to prepare 2-3 turns before
+
+				val isTrainingCampApproaching = when {
+					// SUMMER TRAINING CAMP
+					// 1 turn before summer: Early June
 					currentDate.month == 6 && currentDate.phase == "Early" -> {
-						printToLog("[TRAINING] Summer training is 2 turns away (currently Early June)")
+						printToLog("[TRAINING] Summer training camp starts NEXT TURN (currently Early June)!")
 						true
 					}
-					// 1 turn before summer: Mid June (between Early and Late)
-					// Since we only have Early/Late phases, this would be handled as part of Early June
+					// 2 turns before summer: Late May
+					currentDate.month == 5 && currentDate.phase == "Late" -> {
+						printToLog("[TRAINING] Summer training camp in 2 turns (currently Late May)")
+						true
+					}
+					// 3 turns before summer: Early May (start preparing)
+					currentDate.month == 5 && currentDate.phase == "Early" -> {
+						printToLog("[TRAINING] Summer training camp in 3 turns (currently Early May) - begin preparation")
+						true
+					}
+
+					// WINTER TRAINING CAMP
+					// 1 turn before winter: Early December
+					currentDate.month == 12 && currentDate.phase == "Early" -> {
+						printToLog("[TRAINING] Winter training camp starts NEXT TURN (currently Early December)!")
+						true
+					}
+					// 2 turns before winter: Late November
+					currentDate.month == 11 && currentDate.phase == "Late" -> {
+						printToLog("[TRAINING] Winter training camp in 2 turns (currently Late November)")
+						true
+					}
+					// 3 turns before winter: Early November (start preparing)
+					currentDate.month == 11 && currentDate.phase == "Early" -> {
+						printToLog("[TRAINING] Winter training camp in 3 turns (currently Early November) - begin preparation")
+						true
+					}
+
 					else -> false
 				}
 				
-				// Pre-summer rest strategy logging
-				if (isSummerApproaching && estimatedEnergy < 60) {
-					printToLog("[TRAINING] PRE-SUMMER: Energy is low (~${estimatedEnergy.toInt()}%) with summer approaching in 2 turns")
-					printToLog("[TRAINING] Prioritizing rest to maximize summer training benefits (equivalent to Lv5 training)")
-					printToLog("[TRAINING] Setting ultra-conservative 5% failure threshold for pre-summer preparation")
+				// Pre-training camp rest strategy based on FAILURE RATES, not estimated energy
+				if (isTrainingCampApproaching) {
+					// Check actual failure rates to decide on rest
+					val lowestFailure = trainingMap.values.minOfOrNull { it.failureChance } ?: 100
+					val turnsUntilCamp = getTurnsUntilTrainingCamp()
+
+					val shouldRestForCamp = when (turnsUntilCamp) {
+						1 -> lowestFailure > 10  // 1 turn before: rest if ALL trainings >10% failure
+						2 -> lowestFailure > 10  // 2 turns before: rest if ALL trainings >10% failure
+						3 -> lowestFailure > 15  // 3 turns before: rest if ALL trainings >15% failure
+						else -> false
+					}
+
+					if (shouldRestForCamp) {
+						printToLog("[TRAINING] PRE-CAMP: ${turnsUntilCamp} turns until camp. Lowest failure: ${lowestFailure}%")
+						printToLog("[TRAINING] Will prioritize rest to have energy for Lv5 training facilities")
+					}
 				}
 				
-				// Check if we're currently IN summer training (not just approaching)
-				val isCurrentlySummer = imageUtils.findImage("recover_energy_summer", tries = 1, region = imageUtils.regionBottomHalf, suppressError = true).first != null
+				// Check if we're currently IN a training camp (not just approaching)
+				// Training camps occur at:
+				// - Summer: Late June (month 6, phase "Late") and July (month 7)
+				// - Winter: Late December (month 12, phase "Late") and January (month 1)
+				val isInTrainingCamp = when {
+					// Summer training camp
+					currentDate.month == 6 && currentDate.phase == "Late" -> true
+					currentDate.month == 7 -> true
+					// Winter training camp
+					currentDate.month == 12 && currentDate.phase == "Late" -> true
+					currentDate.month == 1 -> true
+					// Also check for summer image indicator as backup
+					else -> imageUtils.findImage("recover_energy_summer", tries = 1, region = imageUtils.regionBottomHalf, suppressError = true).first != null
+				}
 				
-				// Enhanced risk management with multiple factors
+				// Dynamic risk management based on training value
 				val adjustedFailureThreshold = when {
-					// DURING SUMMER - Be more aggressive to maximize Lv5 training
-					isCurrentlySummer && estimatedEnergy >= 40 -> {
-						printToLog("[TRAINING] SUMMER LV5: Accepting higher risk (25%) to maximize training benefits")
-						25
+					// EXCEPTIONAL VALUE - Worth up to 30% risk
+					friendshipTrainingCount >= 3 && bestFriendshipValue > 300 -> {
+						printToLog("[TRAINING] EXCEPTIONAL: $friendshipTrainingCount friendships (value: $bestFriendshipValue) - accepting up to 30% failure")
+						30
 					}
-					isCurrentlySummer && estimatedEnergy >= 30 -> {
-						printToLog("[TRAINING] SUMMER LV5: Moderate energy, accepting 20% risk for summer training")
+
+					// DURING TRAINING CAMP - Don't risk training failure above 20%
+					// Better to train Wit or Rest than waste the Lv5 opportunity
+					isInTrainingCamp -> {
+						printToLog("[TRAINING] CAMP LV5: Maximum 20% failure threshold (avoid wasting Lv5 training)")
 						20
 					}
 					
-					// PRE-SUMMER PREPARATION - Rest if energy is low
-					isSummerApproaching && estimatedEnergy < 60 -> {
-						printToLog("[TRAINING] PRE-SUMMER REST: Preparing for summer training - max 5% failure risk")
-						5
+					// PRE-TRAINING CAMP PREPARATION - Use failure rates directly
+					isTrainingCampApproaching -> {
+						val turnsUntilCamp = getTurnsUntilTrainingCamp()
+						val threshold = when (turnsUntilCamp) {
+							1 -> 10  // Next turn is camp: very conservative
+							2 -> 10  // 2 turns: still conservative
+							3 -> 15  // 3 turns: slightly more relaxed
+							else -> 20
+						}
+						printToLog("[TRAINING] PRE-CAMP: ${turnsUntilCamp} turns until camp, using ${threshold}% failure threshold")
+						threshold
 					}
 					
-					// CRITICAL SITUATIONS - Be very conservative
-					estimatedEnergy < 20 -> {
-						printToLog("[TRAINING] CRITICAL: Very low energy (~${estimatedEnergy.toInt()}%) - max 5% failure risk")
-						5
-					}
-					
-					// HIGH VALUE OPPORTUNITIES - Accept more risk
+					// HIGH VALUE OPPORTUNITIES - Dynamic based on value
 					friendshipTrainingCount >= 3 && bestFriendshipValue > 200 -> {
-						printToLog("[TRAINING] HIGH VALUE: $friendshipTrainingCount friendship trainings (value: $bestFriendshipValue) - accepting up to 25% failure risk")
+						printToLog("[TRAINING] HIGH VALUE: $friendshipTrainingCount friendships - up to 25% failure")
 						25
 					}
 					friendshipTrainingCount >= 2 && bestFriendshipValue > 150 -> {
-						printToLog("[TRAINING] GOOD VALUE: $friendshipTrainingCount friendship trainings (value: $bestFriendshipValue) - accepting up to 20% failure risk")
+						printToLog("[TRAINING] GOOD VALUE: $friendshipTrainingCount friendships - up to 20% failure")
 						20
 					}
-					friendshipTrainingCount == 1 && bestFriendshipValue > 100 -> {
-						printToLog("[TRAINING] MODERATE VALUE: 1 friendship training (value: $bestFriendshipValue) - accepting up to 15% failure risk")
-						15
-					}
-					
-					// GAME PHASE ADJUSTMENTS
-					currentDate.year == 3 && currentDate.month >= 11 -> {
-						// Very late game: need to preserve energy for final push
-						printToLog("[TRAINING] ENDGAME: Year 3, Month 11+ - conservative 8% failure risk")
-						8
-					}
-					currentDate.year == 3 -> {
-						// Late game: slightly conservative
-						printToLog("[TRAINING] Late game (Year 3) - standard 12% failure risk")
-						12
-					}
-					currentDate.year == 1 && estimatedEnergy > 40 -> {
-						// Early game with good energy: can take more risks for relationships
-						printToLog("[TRAINING] Early game with good energy - accepting up to 18% failure risk")
+					friendshipTrainingCount >= 1 && bestFriendshipValue > 100 -> {
+						printToLog("[TRAINING] MODERATE VALUE: 1 friendship - up to 18% failure")
 						18
 					}
 					
-					// ENERGY-BASED ADJUSTMENTS
-					estimatedEnergy > 60 -> {
-						// High energy: can afford some risk
-						val threshold = minOf(20, maximumFailureChance + 5)
-						printToLog("[TRAINING] High energy (~${estimatedEnergy.toInt()}%) - accepting up to $threshold% failure risk")
-						threshold
+					// GAME PHASE ADJUSTMENTS - Base thresholds
+					currentDate.year == 3 && currentDate.month == 12 && currentDate.phase == "Early" -> {
+						// URA Finals next turn - ultra conservative
+						printToLog("[TRAINING] URA FINALS NEXT TURN: Ultra conservative 10% failure")
+						10
 					}
-					estimatedEnergy > 40 -> {
-						// Moderate energy: standard threshold
-						printToLog("[TRAINING] Moderate energy (~${estimatedEnergy.toInt()}%) - standard ${maximumFailureChance}% failure risk")
-						maximumFailureChance
+					currentDate.year == 3 && currentDate.month >= 11 -> {
+						// Late game: preparing for URA Finals
+						printToLog("[TRAINING] LATE GAME: Year 3, Month 11+ - base 15% failure")
+						15
 					}
-					estimatedEnergy > 25 -> {
-						// Low energy: be more conservative
-						val threshold = maxOf(10, maximumFailureChance - 5)
-						printToLog("[TRAINING] Low energy (~${estimatedEnergy.toInt()}%) - reduced $threshold% failure risk")
-						threshold
+					currentDate.year == 3 -> {
+						// Late game: can accept more risk for stat gains
+						printToLog("[TRAINING] Year 3: Stat maximization - base 20% failure")
+						20
 					}
+					currentDate.year == 2 -> {
+						// Mid game: balanced approach
+						printToLog("[TRAINING] Year 2: Balanced - base 18% failure")
+						18
+					}
+					currentDate.year == 1 -> {
+						// Early game: focus on relationships
+						printToLog("[TRAINING] Year 1: Relationship focus - base 18% failure")
+						18
+					}
+					
+					// DEFAULT - Standard threshold
 					else -> {
-						// Very low energy: minimal risk
-						printToLog("[TRAINING] Very low energy (~${estimatedEnergy.toInt()}%) - minimal 8% failure risk")
-						8
+						printToLog("[TRAINING] Default threshold - base 15% failure")
+						15
 					}
 				}
 				
@@ -1330,25 +2187,28 @@ class Game(val myContext: Context) {
 					}
 					// If we have high stat deficits, accept more risk
 					else -> {
-						val targets = statTargetsByDistance[preferredDistance]
-						if (targets != null) {
-							val maxDeficit = trainings.withIndex().maxOfOrNull { (index, stat) ->
-								targets[index] - currentStatsMap.getOrDefault(stat, 0)
-							} ?: 0
-							if (maxDeficit > 300) {
-								printToLog("[TRAINING] High stat deficit ($maxDeficit) - increasing risk tolerance by 3%")
-								3
-							} else {
-								0
-							}
+						val maxDeficit = trainings.withIndex().maxOfOrNull { (index, stat) ->
+							statTargets[index] - currentStatsMap.getOrDefault(stat, 0)
+						} ?: 0
+						if (maxDeficit > 300) {
+							printToLog("[TRAINING] High stat deficit ($maxDeficit) - increasing risk tolerance by 3%")
+							3
 						} else {
 							0
 						}
 					}
 				}
 				
-				val finalThreshold = (adjustedFailureThreshold + riskAdjustment).coerceIn(5, 30)
-				printToLog("[TRAINING] Final failure threshold: $finalThreshold%")
+				// Stricter limit: Hard cap at 22% with rare exceptions
+				val dynamicMaxLimit = when {
+					// Only allow >22% for truly exceptional opportunities
+					friendshipTrainingCount >= 4 && bestFriendshipValue > 400 -> 25  // Ultra exceptional
+					friendshipTrainingCount >= 3 && bestFriendshipValue > 350 &&
+						trainingMap.values.any { it.statGains.sum() > 90 } -> 24  // Exceptional with high stats
+					else -> 22  // Standard hard cap at 22%
+				}
+				val finalThreshold = (adjustedFailureThreshold + riskAdjustment).coerceIn(5, dynamicMaxLimit)
+				printToLog("[TRAINING] Final failure threshold: $finalThreshold% (dynamic limit: $dynamicMaxLimit%)")
 				
 				// Check if we should prioritize recovery
 				val needsRecovery = shouldPrioritizeRecovery(avgFailureRate, estimatedEnergy)
@@ -1398,6 +2258,12 @@ class Game(val myContext: Context) {
 						trainingMap.entries.removeIf { it.key !in goodTrainingNames }
 					} else {
 						printToLog("[TRAINING] Found ${acceptableTrainings.size} acceptable training(s) but risk-reward ratios are low")
+						// If energy is high, keep the acceptable trainings anyway
+						if (estimatedEnergy >= 70) {
+							printToLog("[TRAINING] Energy is high (~${estimatedEnergy.toInt()}%), keeping acceptable trainings despite low ratios")
+							val acceptableNames = acceptableTrainings.map { it.name }.toSet()
+							trainingMap.entries.removeIf { it.key !in acceptableNames }
+						}
 					}
 				} else if (witIsBetterThanRest) {
 					// Wit training is better than resting - keep it in the map for scoring
@@ -1466,24 +2332,49 @@ class Game(val myContext: Context) {
 		 * @return A score representing relationship-building value.
 		 */
 		fun scoreFriendshipTraining(training: Training): Double {
-			// Ignore the blacklist in favor of making sure we build up the relationship bars as fast as possible.
-			printToLog("\n[TRAINING] Starting process to score ${training.name} Training with a focus on building relationship bars.")
+			printToLog("\n[TRAINING] Starting process to score ${training.name} Training with balanced stat/friendship focus.")
 
+			// Start with a base score from total stat gains
+			val statGainTotal = training.statGains.sum()
+			var score = statGainTotal.toDouble() * 2.0  // Base score from stats
+
+			// Add friendship value (but not overwhelming)
 			val barResults = training.relationshipBars
-			if (barResults.isEmpty()) return Double.NEGATIVE_INFINITY
-
-			var score = 0.0
-			for (bar in barResults) {
-				val contribution = when (bar.dominantColor) {
-					"orange" -> 0.0
-					"green" -> 1.0
-					"blue" -> 2.5
-					else -> 0.0
+			if (barResults.isNotEmpty()) {
+				var friendshipBonus = 0.0
+				for (bar in barResults) {
+					val contribution = when (bar.dominantColor) {
+						"orange" -> 0.0   // No value - already maxed and giving stat bonus
+						"green" -> 2.0    // Moderate value for green - still building
+						"blue" -> 5.0     // Good value for blue - needs development
+						else -> 0.0
+					}
+					friendshipBonus += contribution
 				}
-				score += contribution
+
+				// Add friendship bonus but cap it to prevent overwhelming stat gains
+				// This ensures 50+ stat trainings beat 20 stat trainings with 1 friendship
+				score += friendshipBonus.coerceAtMost(statGainTotal * 0.5)
+
+				// Special bonus for rainbow trainings (3+ non-maxed friends)
+				val nonMaxedFriends = barResults.count { it.dominantColor != "orange" }
+				if (nonMaxedFriends >= 3) {
+					score *= 1.5  // 50% bonus for rainbow trainings
+					printToLog("[TRAINING] Rainbow training bonus applied for $nonMaxedFriends non-maxed friends!")
+				} else if (nonMaxedFriends >= 2) {
+					score *= 1.2  // 20% bonus for 2 non-maxed friends
+				}
+			} else {
+				// No friendships - pure stat training gets small penalty in Year 1
+				score *= 0.9
 			}
 
-			printToLog("[TRAINING] ${training.name} Training has a score of ${decimalFormat.format(score)} with a focus on building relationship bars.")
+			// Apply failure rate penalty
+			if (training.failureChance > 22) {
+				score *= (1.0 - (training.failureChance - 22) * 0.02).coerceAtLeast(0.5)
+			}
+
+			printToLog("[TRAINING] ${training.name} Training: Stats=${statGainTotal}, Friends=${barResults.size}, Score=${decimalFormat.format(score)}")
 			return score
 		}
 
@@ -1503,96 +2394,108 @@ class Game(val myContext: Context) {
 		 * @return A normalized score (0-100) representing stat efficiency.
 		 */
 		fun calculateStatEfficiencyScore(training: Training, target: IntArray): Double {
-			var score = 100.0
+			// Algorithm: Weighted Normalized Utility Function with Diminishing Returns
+			// This algorithm balances multiple objectives:
+			// 1. Maximize total stat gains (efficiency)
+			// 2. Prioritize stats with larger deficits (urgency)
+			// 3. Respect stat prioritization (strategy)
+			// 4. Apply diminishing returns as stats approach targets
+
+			var totalScore = 0.0
+			val totalStatGain = training.statGains.sum()
+
+			// Base score from total stat gain to ensure high-value trainings are preferred
+			val efficiencyBase = totalStatGain * 2.0
 
 			for ((index, stat) in trainings.withIndex()) {
 				val currentStat = currentStatsMap.getOrDefault(stat, 0)
 				val targetStat = target.getOrElse(index) { 0 }
 				val statGain = training.statGains.getOrElse(index) { 0 }
-				val deficit = targetStat - currentStat
 
-				if (statGain > 0) {
-					// Priority weight based on the current state of the game.
+				if (statGain > 0 && targetStat > 0) {
+					// Calculate normalized progress (0-1 scale)
+					val currentProgress = (currentStat.toDouble() / targetStat).coerceIn(0.0, 1.0)
+					val newProgress = ((currentStat + statGain).toDouble() / targetStat).coerceIn(0.0, 1.0)
+					val progressGain = newProgress - currentProgress
+
+					// Marginal utility with diminishing returns (logarithmic utility function)
+					// This naturally balances between high-deficit and high-gain trainings
+					val marginalUtility = if (currentProgress < 1.0) {
+						// Using log(1 + x) to avoid log(0) and provide smooth diminishing returns
+						val currentUtility = -Math.log(1.01 - currentProgress)  // Approaches infinity as we near completion
+						val newUtility = -Math.log(1.01 - newProgress)
+						(newUtility - currentUtility) * 100  // Scale up for meaningful scores
+					} else {
+						// Over target - minimal value
+						progressGain * 10
+					}
+
+					// Priority weighting based on stat importance
 					val priorityIndex = statPrioritization.indexOf(stat)
-					val priorityWeight = if (priorityIndex != -1) {
-						// Enhanced priority weighting for top 3 stats
-						val top3Bonus = when (priorityIndex) {
-							0 -> 2.0
-							1 -> 1.5
-							2 -> 1.1
-							else -> 1.0
-						}
-						
-						val baseWeight = when {
-							currentDate.year == 1 || currentDate.phase == "Pre-Debut" -> 1.0 + (0.1 * (statPrioritization.size - priorityIndex)) / statPrioritization.size
-							currentDate.year == 2 -> 1.0 + (0.3 * (statPrioritization.size - priorityIndex)) / statPrioritization.size
-							currentDate.year == 3 -> 1.0 + (0.5 * (statPrioritization.size - priorityIndex)) / statPrioritization.size
-							else -> 1.0
-						}
-
-						// Apply deficit multiplier from the guide
-						val deficitMultiplier = getDeficitMultiplier(deficit)
-						baseWeight * top3Bonus * deficitMultiplier  // Include deficit multiplier
-					} else {
-						// Apply deficit multiplier even for non-prioritized stats
-						val deficitMultiplier = getDeficitMultiplier(deficit)
-						deficitMultiplier * 0.5
+					val priorityMultiplier = when (priorityIndex) {
+						0 -> 3.0   // Highest priority stat
+						1 -> 2.5   // Second priority
+						2 -> 2.0   // Third priority
+						3 -> 1.5   // Fourth priority
+						4 -> 1.0   // Fifth priority
+						else -> 0.7  // Non-prioritized
 					}
 
-					// Apply deficit-based multiplier according to the training guide
-					val deficitMultiplier = when {
-						deficit > 300 -> 3.0  // Critical priority
-						deficit > 200 -> 2.5  // High priority
-						deficit > 100 -> 2.0  // Moderate priority
-						deficit > 50 -> 1.5   // Low priority
-						deficit > 0 -> 1.1    // Maintenance
-						else -> 0.5          // Surplus (diminishing returns)
+					// Year-based adjustment (early game vs late game focus)
+					val yearMultiplier = when (currentDate.year) {
+						1 -> 0.8  // Year 1: Less stat focus, more friendship focus
+						2 -> 1.0  // Year 2: Balanced
+						3 -> 1.2  // Year 3: Heavy stat focus
+						else -> 1.0
 					}
 
-					Log.d(tag, "[DEBUG] Priority Weight: $priorityWeight, Deficit: $deficit, Deficit Multiplier: $deficitMultiplier")
+					// Calculate stat-specific score
+					val statScore = marginalUtility * priorityMultiplier * yearMultiplier
 
-					// Calculate efficiency based on remaining gap between the current stat and the target.
-					var efficiency = if (deficit > 0) {
-						// Stat is below target, apply deficit multiplier
-						Log.d(tag, "[DEBUG] Giving bonus for remaining efficiency.")
-						val gapRatio = deficit.toDouble() / targetStat
-						val targetBonus = when {
-							gapRatio > 0.1 -> 1.5
-							gapRatio > 0.05 -> 1.25
-							else -> 1.1
-						}
-						targetBonus + (statGain.toDouble() / deficit).coerceAtMost(1.0)
-					} else {
-						// Stat is above target, give a diminishing bonus based on how much over.
-						Log.d(tag, "[DEBUG] Stat is above target so giving diminishing bonus.")
-						val overageRatio = (statGain.toDouble() / (-deficit + statGain))
-						1.0 + overageRatio * 0.5 // Reduced bonus for over-target training
-					}
-
-					Log.d(tag, "[DEBUG] Efficiency: $efficiency")
-
-					// Apply Spark stat target focus when enabled.
-					if (focusOnSparkStatTarget) {
+					// Special handling for Spark stats (Speed, Stamina, Power to 600)
+					if (focusOnSparkStatTarget && (stat == "Speed" || stat == "Stamina" || stat == "Power")) {
 						val sparkTarget = 600
-						val sparkRemaining = sparkTarget - currentStat
-						
-						// Check if this is a Spark stat (Speed, Stamina, Power) and it's below 600.
-						if ((stat == "Speed" || stat == "Stamina" || stat == "Power") && sparkRemaining > 0) {
-							// Boost efficiency for Spark stats that are below 600.
-							val sparkEfficiency = 2.0 + (statGain.toDouble() / sparkRemaining).coerceAtMost(1.0)
-							// Use the higher of the two efficiencies (original target vs spark target).
-							efficiency = maxOf(efficiency, sparkEfficiency)
+						if (currentStat < sparkTarget) {
+							val sparkProgress = currentStat.toDouble() / sparkTarget
+							val sparkNewProgress = (currentStat + statGain).toDouble() / sparkTarget
+							val sparkUtility = if (sparkProgress < 1.0) {
+								val currentSparkUtility = -Math.log(1.01 - sparkProgress)
+								val newSparkUtility = -Math.log(1.01 - Math.min(sparkNewProgress, 1.0))
+								(newSparkUtility - currentSparkUtility) * 100
+							} else {
+								0.0
+							}
+							// Use the higher utility between normal target and spark target
+							totalScore += Math.max(statScore, sparkUtility * priorityMultiplier * yearMultiplier)
+						} else {
+							totalScore += statScore
 						}
+					} else {
+						totalScore += statScore
 					}
 
-					// Apply deficit multiplier to the scoring
-					score += statGain * 2
-					score += (statGain * 2) * (efficiency * priorityWeight * deficitMultiplier)
-					Log.d(tag, "[DEBUG] Score: $score")
+					Log.d(tag, "[DEBUG] $stat: Gain=$statGain, Progress=${(currentProgress*100).toInt()}%→${(newProgress*100).toInt()}%, Utility=$marginalUtility, Priority=$priorityMultiplier")
 				}
 			}
 
-			return score.coerceAtMost(1000.0)
+			// Combine efficiency base with utility scores
+			// This ensures that a training giving 50 points to a needed stat beats
+			// a training giving 30 points to a slightly more needed stat
+			val finalScore = efficiencyBase + totalScore
+
+			// Apply penalty if all stats are near completion to encourage other activities
+			val allStatsNearComplete = trainings.all { stat ->
+				val current = currentStatsMap.getOrDefault(stat, 0)
+				val targetValue = target.getOrElse(trainings.indexOf(stat)) { 0 }
+				targetValue == 0 || (current.toDouble() / targetValue) > 0.9
+			}
+
+			if (allStatsNearComplete) {
+				return finalScore * 0.5  // Reduce score to encourage friendship building or rest
+			}
+
+			Log.d(tag, "[DEBUG] Training ${training.name}: Total Gain=$totalStatGain, Final Score=$finalScore")
+			return finalScore.coerceAtMost(1000.0)
 		}
 
 		/**
@@ -1616,35 +2519,41 @@ class Game(val myContext: Context) {
 			var maxScore = 0.0
 
 			for (bar in training.relationshipBars) {
-				// Relationship bar values from the guide
+				// Relationship bar values based on development needs
 				val baseValue = when (bar.dominantColor) {
-					"blue" -> 2.5    // Blue bars: Always highest priority
-					"green" -> 1.0   // Green bars: Secondary priority
-					"orange" -> 0.3  // Orange bars: Minimal value
+					"blue" -> 1.5    // Blue bars: High priority - needs development
+					"green" -> 0.7   // Green bars: Moderate priority - partially developed
+					"orange" -> 0.0  // Orange bars: No value - already maxed, giving full stat bonus
 					else -> 0.0
 				}
 
 				if (baseValue > 0) {
 					// Apply diminishing returns for relationship building
 					val fillLevel = bar.fillPercent / 100.0
-					val diminishingFactor = 1.0 - (fillLevel * 0.5) // Less valuable as bars fill up
+					val diminishingFactor = 1.0 - (fillLevel * 0.7) // Strong diminishing returns
 
-					// Year-based focus from the guide
-					// Year 1: 55% relationship focus, Year 2: 50/50, Year 3: 30% relationships
+					// Updated year multipliers to match new weights
+					// Now stats are always prioritized, friendships are just a bonus
 					val yearMultiplier = when {
-						currentDate.year == 1 || currentDate.phase == "Pre-Debut" -> 1.55  // 55% focus
-						currentDate.year == 2 -> 1.0   // 50/50 balanced
-						currentDate.year == 3 -> 0.6   // 30% relationships, 70% stats
-						else -> 1.0
+						currentDate.year == 1 || currentDate.phase == "Pre-Debut" -> 0.8  // Reduced from 1.55
+						currentDate.year == 2 -> 0.5   // Reduced from 1.0
+						currentDate.year == 3 -> 0.3   // Reduced from 0.6
+						else -> 0.5
 					}
 
 					val contribution = baseValue * diminishingFactor * yearMultiplier
 					score += contribution
-					maxScore += 2.5 * 1.55  // Max possible value
+					maxScore += 1.5 * 0.8  // Max possible value (adjusted)
 				}
 			}
 
-			return if (maxScore > 0) (score / maxScore * 100.0) else 0.0
+			// Special bonus for rainbow trainings (3+ non-maxed friends) but capped
+			val nonMaxedCount = training.relationshipBars.count { it.dominantColor != "orange" }
+			if (nonMaxedCount >= 3) {
+				score *= 1.3  // 30% bonus for rainbow trainings (reduced from higher values)
+			}
+
+			return if (maxScore > 0) (score / maxScore * 100.0).coerceAtMost(50.0) else 0.0  // Cap at 50
 		}
 
 		/**
@@ -1688,55 +2597,27 @@ class Game(val myContext: Context) {
 				printToLog("[TRAINING] Mood multiplier ${moodMultiplier}x applied for ${training.name} (${currentMood} mood)")
 			}
 			
-			// Energy recovery bonus for Wit training
+			// Wit training evaluation - NO energy recovery bonus per user request
 			if (training.name == "Wit") {
-				// Check if other trainings have high failure rates (indicating low energy)
-				val otherTrainings = trainingMap.values.filter { it.name != "Wit" }
-				val avgFailureRate = if (otherTrainings.isNotEmpty()) {
-					otherTrainings.map { it.failureChance }.average()
-				} else 0.0
-				
-				// Dynamic bonus based on how much energy recovery is needed
-				// Wit training recovers ~5-10 energy, which reduces failure by 2.5-5%
-				val energyRecoveryValue = when {
-					avgFailureRate > 20 -> {
-						// Critical energy state - Wit recovery is very valuable
-						val bonus = avgFailureRate * 2.0  // Dynamic scaling
-						score += bonus
-						printToLog("[TRAINING] Wit gets +${bonus.toInt()} for energy recovery (critical: ${avgFailureRate.toInt()}% avg failure)")
-						bonus
-					}
-					avgFailureRate > 15 -> {
-						// Low energy - Wit recovery is valuable
-						val bonus = avgFailureRate * 1.5
-						score += bonus
-						printToLog("[TRAINING] Wit gets +${bonus.toInt()} for energy recovery (low: ${avgFailureRate.toInt()}% avg failure)")
-						bonus
-					}
-					avgFailureRate > 10 -> {
-						// Moderate energy - Wit recovery has some value
-						val bonus = avgFailureRate * 1.0
-						score += bonus
-						printToLog("[TRAINING] Wit gets +${bonus.toInt()} for energy recovery (moderate: ${avgFailureRate.toInt()}% avg failure)")
-						bonus
-					}
-					else -> 0.0
-				}
-				
-				// Calculate value of Wit training vs resting
-				// Resting recovers ~40 energy but wastes a turn
-				// Wit with good stats/friends can be more efficient
+				// Evaluate Wit ONLY on its training value, not energy recovery
+				// Wit provides: 2 Speed, 9 Wisdom, 4 SP at level 1
 				val witStatValue = training.statGains.sum()
 				val witFriendValue = training.relationshipBars.size * 10  // Each friend bar worth ~10 points
-				val witTotalValue = witStatValue + witFriendValue + energyRecoveryValue
-				
-				// Compare to resting value (40 energy = 20% failure reduction)
-				val restingValue = avgFailureRate * 2  // Rough value of full energy recovery
-				
-				if (witTotalValue > restingValue && training.failureChance <= 30) {
-					val preferenceBonus = (witTotalValue - restingValue) * 0.5  // Half the difference as bonus
-					score += preferenceBonus
-					printToLog("[TRAINING] Wit preferred over rest: +${preferenceBonus.toInt()} (${witStatValue} stats, ${training.relationshipBars.size} friends)")
+
+				// Check if Wit has exceptional training value (multiple friends, high stats)
+				if (training.relationshipBars.count { it.dominantColor == "blue" } >= 2) {
+					score += 30  // Bonus for multiple blue bars
+					printToLog("[TRAINING] Wit has ${training.relationshipBars.count { it.dominantColor == "blue" }} blue bars: +30")
+				}
+
+				// Additional bonus if Wit stat is below target
+				val currentWit = currentStatsMap.getOrDefault("Wit", 0)
+				val witTarget = statTargets.getOrNull(4) ?: 600
+				val witDeficit = witTarget - currentWit
+				if (witDeficit > 100) {
+					val deficitBonus = minOf(witDeficit / 10, 30)  // Max 30 bonus
+					score += deficitBonus
+					printToLog("[TRAINING] Wit deficit ${witDeficit}: +${deficitBonus}")
 				}
 			}
 
@@ -1793,50 +2674,65 @@ class Game(val myContext: Context) {
 				printToLog("[TRAINING] Skill hint bonus: +${hintBonus.toInt()} for ${skillHintLocations.size} hints")
 			}
 			
-			// Rainbow training (multiple friendship training) bonus
-			// This is valuable but should be proportional to the actual benefit
-			val highFriendshipBars = training.relationshipBars.count { bar -> 
-				bar.dominantColor == "blue" && bar.fillPercent >= 80 
+			// Rainbow training (multiple non-maxed friendship training) bonus
+			// Only count blue and green bars, not orange (already maxed)
+			val nonMaxedHighBars = training.relationshipBars.count { bar ->
+				(bar.dominantColor == "blue" || bar.dominantColor == "green") && bar.fillPercent >= 80
 			}
-			if (highFriendshipBars >= 2) {
-				// Rainbow training typically gives 50-100% more stats
-				val rainbowBonus = training.statGains.sum() * 0.5 * highFriendshipBars
+			if (nonMaxedHighBars >= 2) {
+				// Rainbow training gives bonus but only for non-maxed friends
+				val rainbowBonus = training.statGains.sum() * 0.3 * nonMaxedHighBars
 				score += rainbowBonus
-				printToLog("[TRAINING] Rainbow training bonus: +${rainbowBonus.toInt()} for ${highFriendshipBars} high friendship bars")
+				printToLog("[TRAINING] Rainbow bonus: +${rainbowBonus.toInt()} for ${nonMaxedHighBars} non-maxed high friendship bars")
 			}
 			
-			// Summer training special handling
-			val isSummer = imageUtils.findImage("recover_energy_summer", tries = 1, region = imageUtils.regionBottomHalf, suppressError = true).first != null
-			if (isSummer) {
-				// During summer, we have Lv5 training facilities - maximize usage!
-				// All trainings are significantly more valuable during summer
+			// Training camp special handling (summer and winter)
+			val isInTrainingCamp = when {
+				// Summer training camp
+				currentDate.month == 6 && currentDate.phase == "Late" -> true
+				currentDate.month == 7 -> true
+				// Winter training camp
+				currentDate.month == 12 && currentDate.phase == "Late" -> true
+				currentDate.month == 1 -> true
+				// Also check for summer image indicator as backup
+				else -> imageUtils.findImage("recover_energy_summer", tries = 1, region = imageUtils.regionBottomHalf, suppressError = true).first != null
+			}
+			if (isInTrainingCamp) {
+				// During training camps, we have Lv5 training facilities - maximize usage!
+				// All trainings are significantly more valuable during camps
 				
-				// Base summer bonus for ANY training (Lv5 facilities)
-				val baseSummerBonus = 30.0
-				score += baseSummerBonus
-				printToLog("[TRAINING] Summer Lv5 facility bonus: +${baseSummerBonus.toInt()}")
+				// Base camp bonus for ANY training (Lv5 facilities)
+				val baseCampBonus = 30.0
+				score += baseCampBonus
+				val campType = if (currentDate.month in listOf(6, 7)) "Summer" else "Winter"
+				printToLog("[TRAINING] $campType Camp Lv5 facility bonus: +${baseCampBonus.toInt()}")
 				
-				// Extra bonus for high-value summer trainings
+				// Extra bonus for high-value camp trainings
 				if (training.relationshipBars.size >= 2) {
-					// Multiple friends during summer are extremely valuable
-					val summerFriendBonus = training.relationshipBars.size * 20.0
-					score += summerFriendBonus
-					printToLog("[TRAINING] Summer friendship bonus: +${summerFriendBonus.toInt()} for ${training.relationshipBars.size} friends")
+					// Multiple friends during camps are extremely valuable
+					val campFriendBonus = training.relationshipBars.size * 20.0
+					score += campFriendBonus
+					printToLog("[TRAINING] $campType Camp friendship bonus: +${campFriendBonus.toInt()} for ${training.relationshipBars.size} friends")
 				}
 				
-				// Bonus for high stat gains during summer
+				// Bonus for high stat gains during camps
 				if (training.statGains.sum() > 30) {
-					val summerStatBonus = (training.statGains.sum() - 30) * 0.5
-					score += summerStatBonus
-					printToLog("[TRAINING] Summer high-stat bonus: +${summerStatBonus.toInt()}")
+					val campStatBonus = (training.statGains.sum() - 30) * 0.5
+					score += campStatBonus
+					printToLog("[TRAINING] $campType Camp high-stat bonus: +${campStatBonus.toInt()}")
 				}
 				
-				// Reduce penalty for slightly higher failure during summer
-				// We want to be more aggressive about training during summer
-				if (training.failureChance <= 25) {
-					val summerRiskBonus = 15.0
-					score += summerRiskBonus
-					printToLog("[TRAINING] Summer acceptable risk bonus: +${summerRiskBonus.toInt()}")
+				// During camps, strictly enforce 20% failure threshold
+				// Better to train Wit or Rest than waste Lv5 training opportunity
+				if (training.failureChance > 20) {
+					// Heavy penalty for risky training during camps
+					score *= 0.1  // Reduce score by 90%
+					printToLog("[TRAINING] Camp: ${training.failureChance}% failure exceeds 20% threshold - heavily penalized")
+				} else if (training.failureChance <= 10) {
+					// Bonus for very safe training during camps
+					val safetyBonus = 20.0
+					score += safetyBonus
+					printToLog("[TRAINING] Camp safe training bonus: +${safetyBonus.toInt()}")
 				}
 			}
 
@@ -1870,7 +2766,7 @@ class Game(val myContext: Context) {
 
 			printToLog("\n[TRAINING] Starting scoring for ${training.name} Training.")
 
-			val target = statTargetsByDistance[preferredDistance] ?: intArrayOf(600, 600, 600, 300, 300)
+			val target = statTargets
 
 			var totalScore = 0.0
 			var maxPossibleScore = 0.0
@@ -1884,21 +2780,27 @@ class Game(val myContext: Context) {
 			// 3. Context-aware scoring
 			val contextScore = calculateContextScore(training)
 
+			// Apply year-based weights
+			val (friendshipWeight, statWeight) = getYearBasedWeights()
+
 			if (training.relationshipBars.isNotEmpty()) {
-				totalScore += statScore * 0.6
-				maxPossibleScore += 100.0 * 0.6
+				// Adjust weights based on year progression
+				totalScore += statScore * statWeight
+				maxPossibleScore += 100.0 * statWeight
 
-				totalScore += relationshipScore * 0.1
-				maxPossibleScore += 100.0 * 0.1
+				totalScore += relationshipScore * friendshipWeight
+				maxPossibleScore += 100.0 * friendshipWeight
 
-				totalScore += contextScore * 0.3
-				maxPossibleScore += 100.0 * 0.3
+				val contextWeight = 1.0 - statWeight - friendshipWeight
+				totalScore += contextScore * contextWeight
+				maxPossibleScore += 100.0 * contextWeight
 			} else {
-				totalScore += statScore * 0.7
-				maxPossibleScore += 100.0 * 0.7
+				// No friendships - focus more on stats
+				totalScore += statScore * (statWeight + friendshipWeight * 0.5)
+				maxPossibleScore += 100.0 * (statWeight + friendshipWeight * 0.5)
 
-				totalScore += contextScore * 0.3
-				maxPossibleScore += 100.0 * 0.3
+				totalScore += contextScore * (1.0 - statWeight - friendshipWeight * 0.5)
+				maxPossibleScore += 100.0 * (1.0 - statWeight - friendshipWeight * 0.5)
 			}
 
 			printToLog(
@@ -1915,27 +2817,157 @@ class Game(val myContext: Context) {
 			return normalizedScore
 		}
 
-		// Filter trainings by acceptable failure chance first
-		val acceptableTrainings = trainingMap.values.filter { 
-			it.failureChance >= 0 && it.failureChance <= maximumFailureChance && it.name !in blacklist
+		// Adaptive failure cap based on individual training value
+		val getAdaptiveFailureCap: (Training) -> Int = { training ->
+			val baseValue = training.statGains.sum() + training.relationshipBars.size * 30
+			val friendCount = training.relationshipBars.count { it.fillPercent >= 80 }
+			val blueBars = training.relationshipBars.count { it.dominantColor == "blue" }
+			val levelProgress = trainingCountForLevel.getOrDefault(training.name, 0)
+			val priorityIndex = statPrioritization.indexOf(training.name)
+
+			when {
+				// Exceptional value: Allow up to 30%
+				baseValue > 150 || blueBars >= 4 -> minOf(maximumFailureChance, 30)
+
+				// About to level up priority stat: Allow 25%
+				levelProgress == 3 && priorityIndex <= 1 -> minOf(maximumFailureChance, 25)
+
+				// High value training: Allow 24%
+				friendCount >= 3 || training.statGains.sum() > 90 -> minOf(maximumFailureChance, 24)
+
+				// Standard cap at 22%
+				else -> minOf(maximumFailureChance, 22)
+			}
+		}
+
+		// Filter with adaptive caps per training
+		val acceptableTrainings = trainingMap.values.filter { training ->
+			val maxCap = getAdaptiveFailureCap(training)
+			training.failureChance >= 0 && training.failureChance <= maxCap && training.name !in blacklist
 		}
 		
 		if (acceptableTrainings.isEmpty()) {
-			printToLog("[TRAINING] No trainings within acceptable failure threshold (${maximumFailureChance}%)")
+			printToLog("[TRAINING] WARNING: No acceptable trainings found - must rest")
 			return ""
 		}
 		
-		// Decide which scoring function to use based on the current phase or year.
-		// Junior Year will focus on building relationship bars.
-		val best = if (currentDate.phase == "Pre-Debut" || currentDate.year == 1) {
-			acceptableTrainings.maxByOrNull { scoreFriendshipTraining(it) }
-		} else acceptableTrainings.maxByOrNull { scoreStatTraining(it) }
+		// Check recent training history to prevent loops
+		if (recentTrainings.size >= 3) {
+			// Check if we're stuck in a pattern (e.g., Speed->Stamina->Speed->Stamina)
+			val lastThree = recentTrainings.takeLast(3)
+			if (lastThree.size == 3 && lastThree[0] == lastThree[2]) {
+				printToLog("[TRAINING] Pattern detected in last 3 trainings: $lastThree")
+				// Will apply penalty during scoring
+			}
+		}
+
+		// Hybrid scoring with multiple algorithms
+		val scoringFunction: (Training) -> Double = { training ->
+			// Base score from traditional methods
+			val baseScore = if (currentDate.phase == "Pre-Debut" || currentDate.year == 1) {
+				scoreFriendshipTraining(training)
+			} else {
+				scoreStatTraining(training)
+			}
+
+			// Apply level bonuses (rewards, not penalties)
+			var enhancedScore = applyTrainingLevelAdjustments(training, baseScore)
+
+			// Thompson Sampling for exploration-exploitation
+			val thompsonScore = calculateThompsonScore(training)
+
+			// UCB1 for exploration bonus
+			val ucbScore = calculateUCBBonus(training)
+
+			// Dynamic Programming for long-term value
+			val dpScore = calculateDynamicValue(training)
+
+			// Combine scores with weighted average
+			val combinedScore = when {
+				// Early game: More exploration
+				currentDate.year == 1 -> {
+					enhancedScore * 0.4 + thompsonScore * 0.2 + ucbScore * 0.2 + dpScore * 0.2
+				}
+				// Mid game: Balanced
+				currentDate.year == 2 -> {
+					enhancedScore * 0.5 + thompsonScore * 0.15 + ucbScore * 0.1 + dpScore * 0.25
+				}
+				// Late game: Focus on optimization
+				else -> {
+					enhancedScore * 0.6 + thompsonScore * 0.1 + ucbScore * 0.05 + dpScore * 0.25
+				}
+			}
+
+			// Apply soft constraints and loop prevention
+			val finalScore = applyLoopPreventionPenalties(training, combinedScore)
+
+			// Log composite score for high-value trainings
+			if (finalScore > 200 || training.relationshipBars.count { it.dominantColor == "blue" } >= 2) {
+				printToLog("[SCORING] ${training.name}: Base=${baseScore.toInt()}, Enhanced=${enhancedScore.toInt()}, Final=${finalScore.toInt()}")
+			}
+
+			finalScore
+		}
+
+		val best = acceptableTrainings.maxByOrNull(scoringFunction)
 
 		return if (best != null) {
-			printToLog("[TRAINING] Selected ${best.name} training with ${best.failureChance}% failure chance")
+			// Update training level tracking
+			updateTrainingLevel(best.name)
+
+			// Update success history for Thompson Sampling
+			val history = trainingSuccessHistory.getOrDefault(best.name, Pair(0, 0))
+			val successEstimate = if (best.failureChance <= 10) 1 else 0  // Simplified success tracking
+			trainingSuccessHistory[best.name] = Pair(history.first + successEstimate, history.second + 1)
+
+			// Update value history for UCB1
+			val currentValue = calculateImmediateValue(best)
+			val oldAvg = trainingValueHistory.getOrDefault(best.name, currentValue)
+			val count = historicalTrainingCounts.getOrDefault(best.name, 0) + 1
+			trainingValueHistory[best.name] = (oldAvg * (count - 1) + currentValue) / count
+
+			// Increment total trainings counter
+			totalTrainingsDone++
+
+			// Update training history
+			if (best.name == lastTrainingName) {
+				consecutiveSameTraining++
+			} else {
+				consecutiveSameTraining = 1
+				lastTrainingName = best.name
+			}
+
+			// Update recent trainings list
+			recentTrainings.add(best.name)
+			if (recentTrainings.size > maxRecentHistory) {
+				recentTrainings.removeAt(0)  // Remove oldest
+			}
+
+			// Log detailed information about the selection
+			val statIndex = trainings.indexOf(best.name)
+			val currentStat = currentStatsMap.getOrDefault(best.name, 0)
+			val targetStat = statTargets.getOrElse(statIndex) { 600 }
+			val completionPercent = if (targetStat > 0) (currentStat.toDouble() / targetStat * 100) else 100.0
+			val currentLevel = trainingLevels[best.name] ?: 1
+			val levelProgress = trainingCountForLevel[best.name] ?: 0
+
+			printToLog("[TRAINING] Selected ${best.name} training:")
+			printToLog("  - Level: Lv$currentLevel (${levelProgress}/$trainingsPerLevel to next level)")
+			printToLog("  - Failure: ${best.failureChance}% (max allowed: 22%)")
+			printToLog("  - Current stat: $currentStat/$targetStat (${completionPercent.toInt()}% complete)")
+			if (currentStat >= absoluteStatCap - 100) {
+				printToLog("  - WARNING: Approaching absolute cap ($absoluteStatCap)!")
+			}
+			printToLog("  - Stat gains: ${best.statGains.sum()} total")
+			printToLog("  - Friendships: ${best.relationshipBars.size} (${best.relationshipBars.count { it.dominantColor == "blue" }} blue)")
+			if (consecutiveSameTraining > 1) {
+				printToLog("  - WARNING: Done $consecutiveSameTraining times in a row")
+			}
+
 			historicalTrainingCounts.put(best.name, historicalTrainingCounts.getOrDefault(best.name, 0) + 1)
 			best.name
 		} else {
+			printToLog("[TRAINING] No acceptable training found under 22% failure - will rest")
 			""
 		}
 	}
@@ -1951,6 +2983,13 @@ class Game(val myContext: Context) {
 		if (trainingSelected != "") {
 			printTrainingMap()
 			printToLog("[TRAINING] Executing the $trainingSelected Training.")
+
+			// Update friendship levels for support cards in this training
+			val training = trainingMap[trainingSelected]
+			if (training != null) {
+				updateFriendshipLevels(training)
+			}
+
 			findAndTapImage("training_${trainingSelected.lowercase()}", region = imageUtils.regionBottomHalf, taps = 3)
 			printToLog("[TRAINING] Process to execute training completed.")
 		} else {
@@ -1961,6 +3000,116 @@ class Game(val myContext: Context) {
 
 		// Now reset the Training map.
 		trainingMap.clear()
+	}
+
+	/**
+	 * Updates friendship levels for support cards after training.
+	 * Tracks each support card's friendship percentage (0-100%).
+	 */
+	private fun updateFriendshipLevels(training: Training) {
+		training.relationshipBars.forEachIndexed { index, bar ->
+			val supportId = "support_$index" // In real implementation, would need to identify actual support card
+			val currentFriendship = supportFriendships.getOrDefault(supportId, 0)
+
+			// Update based on bar fill percentage
+			if (bar.fillPercent < 100) {
+				val newFriendship = minOf(currentFriendship + friendshipGainPerTraining, maxFriendship)
+				supportFriendships[supportId] = newFriendship
+
+				if (bar.dominantColor == "blue" && newFriendship >= 80) {
+					printToLog("[FRIENDSHIP] Support #$index reached orange level (${newFriendship}%)")
+				} else if (newFriendship >= 100) {
+					printToLog("[FRIENDSHIP] Support #$index reached rainbow/max level (100%)")
+				}
+			}
+		}
+
+		// Log friendship progress summary
+		val avgFriendship = if (supportFriendships.isNotEmpty()) {
+			supportFriendships.values.average()
+		} else 0.0
+
+		if (totalTrainingsDone % 5 == 0) { // Every 5 trainings
+			printToLog("[FRIENDSHIP] Average friendship: ${avgFriendship.toInt()}%")
+			printToLog("[FRIENDSHIP] Max friendships: ${supportFriendships.values.count { it >= 100 }}/${supportFriendships.size}")
+		}
+	}
+
+	/**
+	 * Gets year-based training weights for balanced progression.
+	 * Year 1: Balanced with slight friendship focus (25% friendship, 75% stats)
+	 * Year 2: Stat focused (15% friendship, 85% stats)
+	 * Year 3: Maximum stat focus (10% friendship, 90% stats)
+	 *
+	 * NOTE: Even with lower friendship weight, rainbow trainings (3+ friends)
+	 * will still be prioritized due to their exceptional value
+	 */
+	private fun getYearBasedWeights(): Pair<Double, Double> {
+		return when (currentDate.year) {
+			1 -> Pair(0.25, 0.75)  // 25% friendship, 75% stats - stat focused even in Year 1
+			2 -> Pair(0.15, 0.85)  // 15% friendship, 85% stats - heavy stat focus
+			3 -> Pair(0.10, 0.90)  // 10% friendship, 90% stats - maximum stat priority
+			else -> Pair(0.15, 0.85) // Default stat-focused
+		}
+	}
+
+	/**
+	 * Tracks skill points and provides warnings when below expected thresholds.
+	 * Updates every 5 turns to avoid excessive OCR calls.
+	 */
+	private fun trackSkillPoints() {
+		val turnNumber = currentDate.turnNumber
+
+		// Only check every 5 turns or if it's been a while
+		if (turnNumber - lastSkillPointCheck < 5) {
+			return
+		}
+
+		currentSkillPoints = imageUtils.determineSkillPoints()
+		lastSkillPointCheck = turnNumber
+
+		if (currentSkillPoints < 0) {
+			printToLog("[SKILL POINTS] Unable to determine skill points via OCR")
+			return
+		}
+
+		printToLog("[SKILL POINTS] Current: $currentSkillPoints")
+
+		// Check against thresholds and warn if behind
+		when {
+			currentDate.year == 2 && currentDate.month >= 6 && currentSkillPoints < 200 -> {
+				printToLog("[SKILL POINTS] ⚠️ WARNING: Only $currentSkillPoints SP by mid Year 2 (target: 200+)")
+				printToLog("[SKILL POINTS] Consider prioritizing SP gain in events")
+			}
+			currentDate.year == 3 && currentDate.month <= 3 && currentSkillPoints < 400 -> {
+				printToLog("[SKILL POINTS] ⚠️ WARNING: Only $currentSkillPoints SP at Year 3 start (target: 400+)")
+				printToLog("[SKILL POINTS] Prioritize skill point events!")
+			}
+			currentDate.year == 3 && currentDate.month >= 10 && currentSkillPoints < 600 -> {
+				printToLog("[SKILL POINTS] ⚠️ CRITICAL: Only $currentSkillPoints SP before URA Finals (target: 600+)")
+				printToLog("[SKILL POINTS] Urgently need skill points for competitive build!")
+			}
+			currentDate.year == 3 && currentDate.month >= 11 && currentSkillPoints >= 750 -> {
+				printToLog("[SKILL POINTS] ✅ Excellent! $currentSkillPoints SP ready for URA Finals")
+			}
+		}
+
+		// Provide suggestions based on skill point status
+		if (currentSkillPoints < getExpectedSkillPoints()) {
+			printToLog("[SKILL POINTS] TIP: Choose +SP options in events when available")
+		}
+	}
+
+	/**
+	 * Returns expected skill points based on current game progress.
+	 */
+	private fun getExpectedSkillPoints(): Int {
+		val turnNumber = currentDate.turnNumber
+		return when {
+			turnNumber <= 24 -> turnNumber * 8  // ~8 SP per turn in Year 1
+			turnNumber <= 48 -> 200 + (turnNumber - 24) * 12  // ~12 SP per turn in Year 2
+			else -> 500 + (turnNumber - 48) * 15  // ~15 SP per turn in Year 3
+		}
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2074,7 +3223,20 @@ class Game(val myContext: Context) {
 						// Apply inflated weights to the prioritized stats based on their order.
 						statPrioritization.forEachIndexed { index, stat ->
 							if (line.contains(stat)) {
-								// Calculate weight bonus based on position (higher priority = higher bonus).
+								// Get current stat and target for context-aware scoring
+								val currentStat = currentStatsMap.getOrDefault(stat, 0)
+								val statIndex = when (stat) {
+									"Speed" -> 0
+									"Stamina" -> 1
+									"Power" -> 2
+									"Guts" -> 3
+									"Wit", "Wisdom" -> 4
+									else -> 0
+								}
+								val targetStat = statTargets.getOrNull(statIndex) ?: 600
+								val completionPercent = if (targetStat > 0) (currentStat * 100 / targetStat) else 100
+
+								// Calculate weight bonus based on position AND deficit
 								val priorityBonus = when (index) {
 									0 -> 50
 									1 -> 40
@@ -2083,9 +3245,17 @@ class Game(val myContext: Context) {
 									else -> 10
 								}
 
+								// Deficit multiplier for urgent needs
+								val deficitMultiplier = when {
+									completionPercent < 30 -> 2.0
+									completionPercent < 50 -> 1.5
+									completionPercent < 70 -> 1.2
+									else -> 1.0
+								}
+
 								val finalStatValue = try {
 									priorityStatCheck = true
-									if (formattedLine.contains("/")) {
+									val baseValue = if (formattedLine.contains("/")) {
 										val splits = formattedLine.split("/")
 										var sum = 0
 										for (split in splits) {
@@ -2096,16 +3266,17 @@ class Game(val myContext: Context) {
 												10
 											}
 										}
-										sum + priorityBonus
+										sum
 									} else {
-										formattedLine.toInt() + priorityBonus
+										formattedLine.toInt()
 									}
+									((baseValue + priorityBonus) * deficitMultiplier).toInt()
 								} catch (_: NumberFormatException) {
 									printToLog("[WARNING] Could not convert $formattedLine to a number for a priority stat.")
 									priorityStatCheck = false
 									10
 								}
-								printToLog("[TRAINING-EVENT] Adding weight for option #${optionSelected + 1} of $finalStatValue for prioritized stat.")
+								printToLog("[TRAINING-EVENT] Adding weight for option #${optionSelected + 1} of $finalStatValue for prioritized stat (${completionPercent}% complete).")
 								selectionWeight[optionSelected] += finalStatValue
 							}
 						}
@@ -2229,8 +3400,7 @@ class Game(val myContext: Context) {
 		// First, check if there is a mandatory or a extra race available. If so, head into the Race Selection screen.
 		// Note: If there is a mandatory race, the bot would be on the Home screen.
 		// Otherwise, it would have found itself at the Race Selection screen already (by way of the insufficient fans popup).
-		if (findAndTapImage("race_select_mandatory", tries = 1, region = imageUtils.regionBottomHalf))
-		{
+		if (findAndTapImage("race_select_mandatory", tries = 1, region = imageUtils.regionBottomHalf)) {
 			printToLog("\n[RACE] Starting process for handling a mandatory race.")
 
 			if (enableStopOnMandatoryRace) {
@@ -2304,7 +3474,7 @@ class Game(val myContext: Context) {
 		{
 			printToLog("\n[RACE] Starting process for handling a extra race.")
 
-			// 3+ consecutive race warning
+			// If there is a popup warning about repeating races 3+ times, stop the process and do something else other than racing.
 			if (imageUtils.findImage("race_repeat_warning").first != null) {
 				if (!enableForceRacing && !enableScheduledExtraRaces) {
 					raceRepeatWarningCheck = true
@@ -2317,188 +3487,198 @@ class Game(val myContext: Context) {
 				}
 			}
 
-			// Make sure the list is present and grab a stable anchor
+			// There is a extra race.
+			// Swipe up the list to get to the top and then select the first option.
 			val statusLocation = imageUtils.findImage("race_status").first
 			if (statusLocation == null) {
 				printToLog("[ERROR] Unable to determine existence of list of extra races. Canceling the racing process and doing something else.", isError = true)
 				return false
 			}
+			gestureUtils.swipe(statusLocation.x.toFloat(), statusLocation.y.toFloat() + 300, statusLocation.x.toFloat(), statusLocation.y.toFloat() + 888)
+			wait(1.0)
 
-			// Helper lambdas (use only existing utilities)
-			fun selectNextBelow(from: Point) {
-				if (imageUtils.isTablet) {
-					tap(
-						imageUtils.relX(from.x, (-100 * 1.36).toInt()).toDouble(),
-						imageUtils.relY(from.y, (150 * 1.50).toInt()).toDouble(),
-						"race_extra_selection",
-						ignoreWaiting = true
-					)
-				} else {
-					tap(
-						imageUtils.relX(from.x, -100).toDouble(),
-						imageUtils.relY(from.y, 150).toDouble(),
-						"race_extra_selection",
-						ignoreWaiting = true
-					)
-				}
-				wait(0.5)
+			// Intelligent race selection with strategic planning
+			val currentFans = getCurrentFans() // You'll need to implement this OCR function
+			val fanTargets = getFanTargetsForGrade()
+			val turnsRemaining = getTurnsUntilNextMandatory()
+
+			printToLog("[RACE] Current fans: $currentFans, Next target: ${fanTargets.first}, Turns remaining: $turnsRemaining")
+
+			// First find all available races
+			var count = 0
+			val maxCount = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf).size
+			if (maxCount == 0) {
+				printToLog("[WARNING] Was unable to find any extra races to select. Canceling the racing process and doing something else.", isError = true)
+				return false
+			} else {
+				printToLog("[RACE] There are $maxCount extra race options currently on screen.")
 			}
-			// Call this right after each scroll to force the highlight onto a full, visible row
-			fun forceSelectFirstVisible() {
-				val spots = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf)
-				if (spots.isEmpty()) return
-				val first = spots.minByOrNull { it.y }!!     // top-most fans label = row 1 on this screen
+			val listOfFans = mutableListOf<Int>()
+			val extraRaceLocation = mutableListOf<Point>()
+			val doublePredictionLocations = imageUtils.findAll("race_extra_double_prediction")
+
+			// Quick selection if only one double prediction race
+			if (doublePredictionLocations.size == 1 && !needsSpecificFanCount(currentFans, fanTargets)) {
+				printToLog("[RACE] There is only one race with double predictions so selecting that one.")
 				tap(
-					first.x - imageUtils.relWidth((100 * 1.36).toInt()),
-					first.y - imageUtils.relHeight(70),
-					"race_extra_selection",
+					doublePredictionLocations[0].x,
+					doublePredictionLocations[0].y,
+					"race_extra_double_prediction",
 					ignoreWaiting = true
 				)
-				wait(0.3)
-				// verify highlight is on the same band; if not, tap once more a bit higher to snap
-				imageUtils.findImage("race_extra_selection", region = imageUtils.regionBottomHalf).first?.let { sel ->
-					if (kotlin.math.abs(sel.y - first.y) > imageUtils.relHeight(80)) {
+			} else {
+				// Helper lambdas (use only existing utilities)
+				fun selectNextBelow(from: Point) {
+					if (imageUtils.isTablet) {
 						tap(
-							first.x - imageUtils.relWidth((100 * 1.36).toInt()),
-							first.y - imageUtils.relHeight(110),
+							imageUtils.relX(from.x, (-100 * 1.36).toInt()).toDouble(),
+							imageUtils.relY(from.y, (150 * 1.50).toInt()).toDouble(),
 							"race_extra_selection",
 							ignoreWaiting = true
 						)
-						wait(0.25)
+					} else {
+						tap(
+							imageUtils.relX(from.x, -100).toDouble(),
+							imageUtils.relY(from.y, 150).toDouble(),
+							"race_extra_selection",
+							ignoreWaiting = true
+						)
+					}
+					wait(0.5)
+				}
+				// Call this right after each scroll to force the highlight onto a full, visible row
+				fun forceSelectFirstVisible() {
+					val spots = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf)
+					if (spots.isEmpty()) return
+					val first = spots.minByOrNull { it.y }!!     // top-most fans label = row 1 on this screen
+					tap(
+						first.x - imageUtils.relWidth((100 * 1.36).toInt()),
+						first.y - imageUtils.relHeight(70),
+						"race_extra_selection",
+						ignoreWaiting = true
+					)
+					wait(0.3)
+					// verify highlight is on the same band; if not, tap once more a bit higher to snap
+					imageUtils.findImage("race_extra_selection", region = imageUtils.regionBottomHalf).first?.let { sel ->
+						if (kotlin.math.abs(sel.y - first.y) > imageUtils.relHeight(80)) {
+							tap(
+								first.x - imageUtils.relWidth((100 * 1.36).toInt()),
+								first.y - imageUtils.relHeight(110),
+								"race_extra_selection",
+								ignoreWaiting = true
+							)
+							wait(0.25)
+						}
 					}
 				}
-			}
-			// 2) Small helper: (re)select visible row 0 or 1 on *current* screen using fans anchors
-			fun selectVisibleRow(index: Int): Boolean {
-				val fansAnchors = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf).sortedBy { it.y }
-				if (fansAnchors.size < index + 1) return false
-				val anchor = fansAnchors[index]
-				val targetX = (anchor.x - imageUtils.relWidth(120)).toDouble()
-				tap(targetX, anchor.y, "reselect_row_${index+1}", ignoreWaiting = true)
-				wait(0.2)
-				return true
-			}
-
-			data class Candidate(
-				val fans: Int,
-				val hasDouble: Boolean,
-				val location: Point,
-				val onThirdScreen: Boolean,
-				val rowIndex: Int // 0=first row, 1=second row on whichever screen you’re on
-			)
-
-			val candidatesTop = mutableListOf<Candidate>()
-			val candidatesBottom = mutableListOf<Candidate>() // row 3 (after scroll)
-
-			// Always start from the top of the list (rows 1–2)
-			// swipe: pull list to top using the same direction you already use elsewhere
-			gestureUtils.swipe(
-				statusLocation.x.toFloat(), statusLocation.y.toFloat() ,
-				statusLocation.x.toFloat(), statusLocation.y.toFloat() + 350f
-			)
-			wait(1.0)
-			forceSelectFirstVisible()
-			// Scan visible (rows 1–2)
-			run {
-				val fansSpots = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf)
-				val maxCount = fansSpots.size
-				if (maxCount == 0) {
-					printToLog("[WARNING] Was unable to find any extra races to select. Canceling the racing process and doing something else.", isError = true)
-					return false
-				} else {
-					printToLog("[RACE] There are $maxCount extra race options currently on screen.")
+				// 2) Small helper: (re)select visible row 0 or 1 on *current* screen using fans anchors
+				fun selectVisibleRow(index: Int): Boolean {
+					val fansAnchors = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf).sortedBy { it.y }
+					if (fansAnchors.size < index + 1) return false
+					val anchor = fansAnchors[index]
+					val targetX = (anchor.x - imageUtils.relWidth(120)).toDouble()
+					tap(targetX, anchor.y, "reselect_row_${index+1}", ignoreWaiting = true)
+					wait(0.2)
+					return true
 				}
-
-				val (srcBmp, tplBmp) = imageUtils.getBitmaps("race_extra_double_prediction")
-				var count = 0
+				val (sourceBitmap, templateBitmap) = imageUtils.getBitmaps("race_extra_double_prediction")
+				val listOfRaces: ArrayList<ImageUtils.RaceDetails> = arrayListOf()
 				while (count < maxCount) {
-					val selected = imageUtils.findImage("race_extra_selection", region = imageUtils.regionBottomHalf).first
-					if (selected == null) {
+					// Save the location of the selected extra race.
+					val selectedExtraRace = imageUtils.findImage("race_extra_selection", region = imageUtils.regionBottomHalf).first
+					if (selectedExtraRace == null) {
 						printToLog("[ERROR] Unable to find the location of the selected extra race. Canceling the racing process and doing something else.", isError = true)
 						break
 					}
+					extraRaceLocation.add(selectedExtraRace)
 
-					val det = imageUtils.determineExtraRaceFans(selected, srcBmp, tplBmp!!, forceRacing = enableForceRacing)
-					candidatesTop += Candidate(det.fans, det.hasDoublePredictions, selected, onThirdScreen = false , rowIndex = count)
+					// Determine its fan gain and save it.
+					val raceDetails: ImageUtils.RaceDetails = imageUtils.determineExtraRaceFans(extraRaceLocation[count], sourceBitmap, templateBitmap!!, forceRacing = enableForceRacing)
+					listOfRaces.add(raceDetails)
+					if (count == 0 && raceDetails.fans == -1) {
+						// If the fans were unable to be fetched or the race does not have double predictions for the first attempt, skip racing altogether.
+						listOfFans.add(raceDetails.fans)
+						break
+					}
+					listOfFans.add(raceDetails.fans)
 
-					if (count + 1 < maxCount) selectNextBelow(selected)
+					// Select the next extra race.
+					if (count + 1 < maxCount) {
+						if (imageUtils.isTablet) {
+							tap(
+								imageUtils.relX(extraRaceLocation[count].x, (-100 * 1.36).toInt()).toDouble(),
+								imageUtils.relY(extraRaceLocation[count].y, (150 * 1.50).toInt()).toDouble(),
+								"race_extra_selection",
+								ignoreWaiting = true
+							)
+						} else {
+							tap(
+								imageUtils.relX(extraRaceLocation[count].x, -100).toDouble(),
+								imageUtils.relY(extraRaceLocation[count].y, 150).toDouble(),
+								"race_extra_selection",
+								ignoreWaiting = true
+							)
+						}
+					}
+
+					wait(0.5)
+
 					count++
 				}
 
-				val fansList = candidatesTop.joinToString(", ") { it.fans.toString() }
-				printToLog("[RACE] Fans detected (top screen): $fansList")
-			}
+				val fansList = listOfRaces.joinToString(", ") { it.fans.toString() }
+				printToLog("[RACE] Number of fans detected for each extra race are: $fansList")
 
-			// Scroll down to reveal row 3, then scan it
-			gestureUtils.swipe(
-				statusLocation.x.toFloat(), statusLocation.y.toFloat() + 350f,
-				statusLocation.x.toFloat(), statusLocation.y.toFloat()
-			)
-			wait(2.0)
-			forceSelectFirstVisible()
-
-			run {
-				val fansSpots = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf)
-				val maxCount = fansSpots.size
-				if (maxCount > 0) {
-					val (srcBmp, tplBmp) = imageUtils.getBitmaps("race_extra_double_prediction")
-					// We only need the first row shown on this “third-row” screen
-					val selected = imageUtils.findImage("race_extra_selection", region = imageUtils.regionBottomHalf).first
-					if (selected != null) {
-						val det = imageUtils.determineExtraRaceFans(selected, srcBmp, tplBmp!!, forceRacing = enableForceRacing)
-						candidatesBottom += Candidate(det.fans, det.hasDoublePredictions, selected, onThirdScreen = true , rowIndex = 2)
-						printToLog("[RACE] Fans detected (third row screen): ${det.fans}")
+				// Next determine the maximum fans and select the extra race.
+				val maxFans: Int? = listOfFans.maxOrNull()
+				if (maxFans != null) {
+					if (maxFans == -1) {
+						printToLog("[WARNING] Max fans was returned as -1. Canceling the racing process and doing something else.")
+						return false
 					}
-				}
-			}
 
-			// Decide the winner (double prediction first, then highest fans)
-			val all = (candidatesTop + candidatesBottom)
-				.sortedWith(compareByDescending<Candidate> { it.hasDouble }.thenByDescending { it.fans })
+					// Intelligent race selection based on multiple factors
+					val index = selectBestRace(listOfRaces, currentFans, fanTargets, turnsRemaining)
 
-			if (all.isEmpty()) {
-				printToLog("[WARNING] No extra races detected and thus no fan maximums were calculated. Canceling the racing process and doing something else.")
-				return false
-			}
+					printToLog("[RACE] Selecting the extra race at option #${index + 1} based on strategic evaluation.")
 
-			val best = all.first()
-			if (best.fans == -1 && !best.hasDouble) {
-				printToLog("[WARNING] Best option has -1 fans and no double predictions. Canceling the racing process and doing something else.")
-				return false
-			}
-
-			// If the winner was on the top screen, scroll back up before tapping its saved location
-			if (!best.onThirdScreen) {
-				printToLog("Swiping up , first 2 had better fans and prediction")
-				gestureUtils.swipe(
-					statusLocation.x.toFloat(), statusLocation.y.toFloat() + 300f,
-					statusLocation.x.toFloat(), statusLocation.y.toFloat() + 888f
-				)
-				wait(2.0)
-				forceSelectFirstVisible()
-				if(best.rowIndex == 1) {
-					val firstRow = imageUtils.findImage(
+					// Select the extra race that matches the double star prediction and the most fan gain.
+					tap(
+						extraRaceLocation[index].x - imageUtils.relWidth((100 * 1.36).toInt()),
+						extraRaceLocation[index].y - imageUtils.relHeight(70),
 						"race_extra_selection",
-						region = imageUtils.regionBottomHalf
-					).first!!
-					selectNextBelow(firstRow)
+						ignoreWaiting = true
+					)
+				} else if (extraRaceLocation.isNotEmpty()) {
+					// If no maximum is determined, select the very first extra race.
+					printToLog("[RACE] Selecting the first extra race on the list by default.")
+					tap(
+						extraRaceLocation[0].x - imageUtils.relWidth((100 * 1.36).toInt()),
+						extraRaceLocation[0].y - imageUtils.relHeight(70),
+						"race_extra_selection",
+						ignoreWaiting = true
+					)
+				} else {
+					printToLog("[WARNING] No extra races detected and thus no fan maximums were calculated. Canceling the racing process and doing something else.")
+					return false
 				}
 			}
 
-			// Tap the saved location using your existing offset tap logic
-			printToLog("[RACE] Selected extra race -> Double:${best.hasDouble}  Fans:${best.fans}  onThirdScreen:${best.onThirdScreen}")
-			// Try to proceed with the selected extra race instead of falling through to Back.
-			val proceeded =
-				findAndTapImage("race_confirm", tries = 2, region = imageUtils.regionBottomHalf)
+			// Confirm the selection and the resultant popup and then wait for the game to load.
+			findAndTapImage("race_confirm", tries = 30, region = imageUtils.regionBottomHalf)
+			findAndTapImage("race_confirm", tries = 10, region = imageUtils.regionBottomHalf)
+			wait(2.0)
 
-			if (!proceeded) {
-				printToLog("[RACE] Could not find a proceed button (race/race_start/ok). Falling back to Back.")
-				findAndTapImage("back", region = imageUtils.regionBottomHalf)
-				return false
+			// Skip the race if possible, otherwise run it manually.
+			val resultCheck: Boolean = if (imageUtils.findImage("race_skip_locked", tries = 5, region = imageUtils.regionBottomHalf).first == null) {
+				skipRace()
+			} else {
+				manualRace()
 			}
 
-			// Give the UI a moment to move to the next screen; the outer flow continues the race.
-			wait(0.8)
+			finishRace(resultCheck, isExtra = true)
+
+			printToLog("[RACE] Racing process for Extra Race is completed.")
 			return true
 		}
 		return false
@@ -2729,14 +3909,6 @@ class Game(val myContext: Context) {
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Helper Functions
 
-	fun updatePreferredDistance() {
-		printToLog("\n[STATS] Updating preferred distance.")
-		if (findAndTapImage("main_status", tries = 1, region = imageUtils.regionMiddle)) {
-			preferredDistance = imageUtils.determinePreferredDistance()
-			findAndTapImage("race_accept_trophy", tries = 1, region = imageUtils.regionBottomHalf)
-			printToLog("[STATS] Preferred distance set to $preferredDistance.")
-		}
-	}
 
 	/**
 	 * Updates the current stat value mapping by reading the character's current stats from the Main screen.
@@ -2764,6 +3936,32 @@ class Game(val myContext: Context) {
 			notificationMessage = "Bot stopped at $currentDate"
 			BotService.isRunning = false   // your wait() checks this and exits cleanly // Campaign.start() will break because it checks this return value
 		}
+		// Check if URA Finals is approaching
+		// URA Finals happens AFTER Late December Year 3 (after turn 72)
+		// Late December is the last training turn
+		if (currentDate.year == 3) {
+			val turnsUntilURA = when {
+				// URA Finals happens after Late December (Late Dec is last training turn)
+				currentDate.month == 12 && currentDate.phase == "Early" -> 1
+				currentDate.month == 11 && currentDate.phase == "Late" -> 2
+				currentDate.month == 11 && currentDate.phase == "Early" -> 3
+				currentDate.month == 10 && currentDate.phase == "Late" -> 4
+				currentDate.month == 10 && currentDate.phase == "Early" -> 5
+				else -> -1
+			}
+
+			if (turnsUntilURA in 1..5) {
+				printToLog("[URA FINALS] WARNING: URA Finals in $turnsUntilURA turns!")
+
+				// Only 1 turn before URA Finals - critical warning
+				if (turnsUntilURA == 1) {
+					printToLog("[URA FINALS] CRITICAL: URA Finals NEXT TURN! Must spend skill points NOW!")
+					notificationMessage = "URA Finals next turn - SPEND SKILL POINTS NOW!"
+				} else if (turnsUntilURA <= 3) {
+					printToLog("[URA FINALS] Consider spending skill points soon.")
+				}
+			}
+		}
 	}
 
 	/**
@@ -2788,43 +3986,95 @@ class Game(val myContext: Context) {
 	 * Attempt to recover energy.
 	 * During summer, be more selective about resting to maximize Lv5 training benefits.
 	 *
+	 * @param forceRest If true, will rest regardless of energy estimation (used when training map is empty)
 	 * @return True if the bot successfully recovered energy. Otherwise false.
 	 */
-	private fun recoverEnergy(): Boolean {
+	private fun recoverEnergy(forceRest: Boolean = false): Boolean {
 		printToLog("\n[ENERGY] Now starting attempt to recover energy.")
 		
-		// Check if it's summer
-		val isSummer = imageUtils.findImage("recover_energy_summer", tries = 1, region = imageUtils.regionBottomHalf, suppressError = true).first != null
+		// If forced rest (e.g., from empty training map), just rest immediately
+		if (forceRest) {
+			printToLog("[ENERGY] Forced rest requested due to no viable trainings.")
+			val restImage = imageUtils.findImage("recover_energy_summer", tries = 1, region = imageUtils.regionBottomHalf, suppressError = true).first != null
+			val restButton = if (restImage) "recover_energy_summer" else "recover_energy"
+			return when {
+				findAndTapImage(restButton, tries = 1, imageUtils.regionBottomHalf) -> {
+					findAndTapImage("ok")
+					printToLog("[ENERGY] Successfully recovered energy (forced rest).")
+					raceRepeatWarningCheck = false
+					true
+				}
+				else -> {
+					printToLog("[ENERGY] Failed to recover energy despite forced rest request.")
+					false
+				}
+			}
+		}
 		
-		if (isSummer) {
-			// During summer, only rest if we really need it
+		// Check if we're in a training camp (summer or winter)
+		val isInTrainingCamp = when {
+			// Summer training camp
+			currentDate.month == 6 && currentDate.phase == "Late" -> true
+			currentDate.month == 7 -> true
+			// Winter training camp
+			currentDate.month == 12 && currentDate.phase == "Late" -> true
+			currentDate.month == 1 -> true
+			// Also check for summer image indicator as backup
+			else -> imageUtils.findImage("recover_energy_summer", tries = 1, region = imageUtils.regionBottomHalf, suppressError = true).first != null
+		}
+
+		if (isInTrainingCamp) {
+			// During training camps, be more flexible with rest decisions
 			// Summer rest gives +40 energy and +1 mood level
-			printToLog("[ENERGY] Summer training active. Rest provides +40 energy and +1 mood.")
+			printToLog("[ENERGY] Training camp active. Rest provides +40 energy and +1 mood.")
+
+			// During training camp, be stricter about failure rates (20% threshold)
+			// Better to rest or train Wit than waste Lv5 training opportunities
+			val hasTrainings = trainingMap.isNotEmpty()
+			val allHighFailures = hasTrainings && trainingMap.values.all { it.failureChance > 20 }
 			
-			// Try to estimate current energy based on failure rates if available
+			if (allHighFailures) {
+				printToLog("[ENERGY] Training Camp: All trainings have >20% failure rate. Must rest or train Wit.")
+				val restImage = if (currentDate.month in listOf(6, 7)) "recover_energy_summer" else "recover_energy"
+				if (findAndTapImage(restImage, tries = 1, imageUtils.regionBottomHalf)) {
+					findAndTapImage("ok")
+					printToLog("[ENERGY] Training Camp: Resting due to universally high failure rates.")
+					raceRepeatWarningCheck = false
+					return true
+				}
+			}
+
+			// Otherwise, estimate energy and make a decision
 			val avgFailureRate = trainingMap.values
 				.filter { it.failureChance >= 0 }
 				.map { it.failureChance }
 				.average()
 			
-			if (!avgFailureRate.isNaN()) {
-				val estimatedEnergy = (50 - avgFailureRate * 2).coerceIn(0.0, 100.0)
+			if (!avgFailureRate.isNaN() && hasTrainings) {
+				// Estimate energy based on failure rates: 0% failure = ~100% energy, 50% failure = ~0% energy
+				val estimatedEnergy = (100 - avgFailureRate * 2).coerceIn(0.0, 100.0)
 				printToLog("[ENERGY] Estimated energy: ${estimatedEnergy.toInt()}% based on training failure rates")
 				
-				// Only rest during summer if energy is quite low
-				if (estimatedEnergy >= 40) {
-					printToLog("[ENERGY] Summer: Energy is sufficient (~${estimatedEnergy.toInt()}%). Skipping rest to maximize Lv5 training.")
+				// During camp, rest if energy is low or failures exceed 20% threshold
+				// This ensures we don't waste Lv5 training opportunities
+				if (estimatedEnergy < 40 || avgFailureRate > 20) {
+					printToLog("[ENERGY] Training Camp: Low energy or high failures warrant rest (Energy: ~${estimatedEnergy.toInt()}%, Avg Failure: ${avgFailureRate.toInt()}%)")
+					val restImage = if (currentDate.month in listOf(6, 7)) "recover_energy_summer" else "recover_energy"
+					if (findAndTapImage(restImage, tries = 1, imageUtils.regionBottomHalf)) {
+						findAndTapImage("ok")
+						printToLog("[ENERGY] Training Camp: Resting to improve training conditions.")
+						raceRepeatWarningCheck = false
+						return true
+					}
+				} else {
+					printToLog("[ENERGY] Training Camp: Good conditions for training (Energy: ~${estimatedEnergy.toInt()}%, Avg Failure: ${avgFailureRate.toInt()}%)")
 					return false
 				}
 			}
-			
-			// If we do need to rest during summer
-			if (findAndTapImage("recover_energy_summer", tries = 1, imageUtils.regionBottomHalf)) {
-				findAndTapImage("ok")
-				printToLog("[ENERGY] Summer: Low energy detected. Using summer rest for recovery.")
-				raceRepeatWarningCheck = false
-				return true
-			}
+
+			// If we can't estimate (no training data), don't force rest - let normal logic handle it
+			printToLog("[ENERGY] Training Camp: No training data available for energy estimation.")
+			return false
 		}
 		
 		// Normal energy recovery (non-summer)
@@ -2875,19 +4125,29 @@ class Game(val myContext: Context) {
 			return false
 		}
 
-		// Check if it's summer
-		val isSummer = imageUtils.findImage("recover_energy_summer", tries = 1, region = imageUtils.regionBottomHalf, suppressError = true).first != null
+		// Check if we're in a training camp
+		val isInTrainingCamp = when {
+			// Summer training camp
+			currentDate.month == 6 && currentDate.phase == "Late" -> true
+			currentDate.month == 7 -> true
+			// Winter training camp
+			currentDate.month == 12 && currentDate.phase == "Late" -> true
+			currentDate.month == 1 -> true
+			// Also check for summer image indicator as backup
+			else -> imageUtils.findImage("recover_energy_summer", tries = 1, region = imageUtils.regionBottomHalf, suppressError = true).first != null
+		}
 		
-		// During summer, only recover mood if it's Bad/Awful (not Normal) since we want to maximize training
-		if (isSummer) {
+		// During training camps, only recover mood if it's Bad/Awful (not Normal) since we want to maximize training
+		if (isInTrainingCamp) {
 			if (currentMood == "Bad/Awful") {
-				printToLog("[MOOD] Summer: Current mood is Bad/Awful. Using summer rest for mood recovery.")
-				findAndTapImage("recover_energy_summer", tries = 1, region = imageUtils.regionBottomHalf)
+				printToLog("[MOOD] Training Camp: Current mood is Bad/Awful. Using rest for mood recovery.")
+				val restImage = if (currentDate.month in listOf(6, 7)) "recover_energy_summer" else "recover_energy"
+				findAndTapImage(restImage, tries = 1, region = imageUtils.regionBottomHalf)
 				findAndTapImage("ok", region = imageUtils.regionMiddle, suppressError = true)
 				raceRepeatWarningCheck = false
 				return true
 			} else {
-				printToLog("[MOOD] Summer: Current mood is $currentMood. Skipping rest to maximize Lv5 training opportunities.")
+				printToLog("[MOOD] Training Camp: Current mood is $currentMood. Skipping rest to maximize Lv5 training opportunities.")
 				return false
 			}
 		}
@@ -2968,14 +4228,15 @@ class Game(val myContext: Context) {
 			findAndTapImage("cancel", region = imageUtils.regionBottomHalf)
 		} else if (findAndTapImage("back", tries = 1, region = imageUtils.regionBottomHalf, suppressError = true)) {
 			wait(1.0)
-
 		} else if (!BotService.isRunning) {
 			throw InterruptedException()
 		} else {
 			printToLog("[INFO] Did not detect any popups or the Crane Game on the screen. Moving on...")
 		}
+
 		return true
 	}
+
 	/**
 	 * Bot will begin automation here.
 	 *
@@ -2987,8 +4248,8 @@ class Game(val myContext: Context) {
 			printToLog(message)
 		}
 
-		// Update the stat targets by distances.
-		setStatTargetsByDistances()
+		// Load the stat targets from preferences.
+		loadStatTargets()
 
 		// If debug mode is off, then it is necessary to wait a few seconds for the Toast message to disappear from the screen to prevent it obstructing anything beneath it.
 		if (!debugMode) {
@@ -3037,5 +4298,108 @@ class Game(val myContext: Context) {
 		Log.d(tag, "Total Runtime: ${endTime - startTime}ms")
 
 		return true
+	}
+
+	/**
+	 * Get current fans count via OCR
+	 */
+	private fun getCurrentFans(): Int {
+		// This would need OCR implementation similar to determineSkillPoints
+		// For now, return a default value
+		return 5000
+	}
+
+	/**
+	 * Get fan targets based on current progress
+	 */
+	private fun getFanTargetsForGrade(): Pair<Int, String> {
+		return when {
+			currentDate.year == 1 -> Pair(1000, "G3")
+			currentDate.year == 2 && currentDate.month <= 6 -> Pair(2000, "G2")
+			currentDate.year == 2 -> Pair(5000, "G1")
+			else -> Pair(10000, "URA Finals")
+		}
+	}
+
+	/**
+	 * Get turns until next mandatory race
+	 */
+	private fun getTurnsUntilNextMandatory(): Int {
+		// Estimate based on current date
+		// Mandatory races typically happen every 4-6 turns
+		return when {
+			currentDate.phase == "Early" -> 3
+			else -> 2
+		}
+	}
+
+	/**
+	 * Check if we need a specific fan count for upcoming race
+	 */
+	private fun needsSpecificFanCount(currentFans: Int, targets: Pair<Int, String>): Boolean {
+		val (targetFans, grade) = targets
+		val deficit = targetFans - currentFans
+
+		// Need specific fans if close to target but not quite there
+		return deficit in 100..500
+	}
+
+	/**
+	 * Select best race based on multiple strategic factors
+	 */
+	private fun selectBestRace(
+		races: List<ImageUtils.RaceDetails>,
+		currentFans: Int,
+		fanTargets: Pair<Int, String>,
+		turnsRemaining: Int
+	): Int {
+		if (races.isEmpty()) return 0
+
+		val (targetFans, grade) = fanTargets
+		val fanDeficit = targetFans - currentFans
+
+		// Score each race
+		val raceScores = races.mapIndexed { index, race ->
+			var score = 0.0
+
+			// Base fan value
+			score += race.fans * 1.0
+
+			// Double prediction bonus (huge boost)
+			if (race.hasDoublePredictions) {
+				score *= 2.5
+				printToLog("[RACE] Race ${index + 1}: Double prediction bonus applied")
+			}
+
+			// Fan planning bonus
+			if (fanDeficit > 0) {
+				val fanProgress = race.fans.toDouble() / fanDeficit
+				if (fanProgress in 0.5..1.2) {
+					// This race would get us close to target
+					score *= 1.3
+					printToLog("[RACE] Race ${index + 1}: Good fan progress toward $grade (${race.fans}/$fanDeficit)")
+				}
+			}
+
+			// Urgency multiplier if we're running out of time
+			if (turnsRemaining <= 2 && fanDeficit > 0) {
+				val urgencyBonus = 1.0 + (race.fans.toDouble() / fanDeficit * 0.5)
+				score *= urgencyBonus
+				printToLog("[RACE] Race ${index + 1}: Urgency bonus for $grade requirement")
+			}
+
+			// Force racing override - prioritize any race we can win
+			if (enableForceRacing && race.hasDoublePredictions) {
+				score *= 3.0 // Heavy bias toward winnable races
+			}
+
+			printToLog("[RACE] Race ${index + 1} final score: $score (fans: ${race.fans}, double: ${race.hasDoublePredictions})")
+			Pair(index, score)
+		}
+
+		// Select race with highest score
+		val bestRace = raceScores.maxByOrNull { it.second } ?: Pair(0, 0.0)
+		printToLog("[RACE] Selected race ${bestRace.first + 1} with score ${bestRace.second}")
+		return bestRace.first
 	}
 }

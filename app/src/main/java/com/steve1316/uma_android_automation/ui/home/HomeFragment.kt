@@ -12,8 +12,15 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
 import android.widget.TextView
+import android.widget.AutoCompleteTextView
+import android.widget.ArrayAdapter
+import android.widget.EditText
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.slider.Slider
+import com.google.android.material.textfield.TextInputLayout
+import org.json.JSONObject
+import org.json.JSONException
 import androidx.core.content.edit
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -41,7 +48,25 @@ class HomeFragment : Fragment() {
 	
 	private lateinit var myContext: Context
 	private lateinit var homeFragmentView: View
-	private lateinit var startButton: Button
+	private lateinit var startButton: MaterialButton
+
+	// UI components for sliders
+	private lateinit var speedSlider: Slider
+	private lateinit var staminaSlider: Slider
+	private lateinit var powerSlider: Slider
+	private lateinit var gutsSlider: Slider
+	private lateinit var witSlider: Slider
+	private lateinit var speedValueText: TextView
+	private lateinit var staminaValueText: TextView
+	private lateinit var powerValueText: TextView
+	private lateinit var gutsValueText: TextView
+	private lateinit var witValueText: TextView
+	private lateinit var priorityDisplay: TextView
+	private lateinit var presetDropdown: AutoCompleteTextView
+	private lateinit var savePresetButton: MaterialButton
+	private lateinit var deletePresetButton: MaterialButton
+	private var presetAdapter: ArrayAdapter<String>? = null
+	private var currentSelectedPreset: String? = null
 	
 	private lateinit var mediaProjectionLauncher: ActivityResultLauncher<Intent>
 	
@@ -68,11 +93,16 @@ class HomeFragment : Fragment() {
 		
 		homeFragmentView = inflater.inflate(R.layout.fragment_home, container, false)
 		
+		// Initialize UI components
+		initializeUIComponents()
+
 		// Start or stop the MediaProjection service via this button.
 		startButton = homeFragmentView.findViewById(R.id.start_button)
 		startButton.setOnClickListener {
 			val readyCheck = startReadyCheck()
 			if (readyCheck && !MediaProjectionService.isRunning) {
+				// Save current stat targets before starting
+				saveStatTargets()
 				startProjection()
 				startButton.text = getString(R.string.stop)
 				
@@ -85,121 +115,494 @@ class HomeFragment : Fragment() {
 			}
 		}
 		
-		////////////////////////////////////////////////////////////////////////////////////////////////////
-		////////////////////////////////////////////////////////////////////////////////////////////////////
+		// Load saved preferences
+		loadSavedPreferences()
 
+		// Setup listeners
+		setupListeners()
+
+		// Display current settings
+		displayCurrentSettings()
+
+		return homeFragmentView
+	}
+
+	private fun initializeUIComponents() {
+		// Sliders
+		speedSlider = homeFragmentView.findViewById(R.id.speed_seekbar)
+		staminaSlider = homeFragmentView.findViewById(R.id.stamina_seekbar)
+		powerSlider = homeFragmentView.findViewById(R.id.power_seekbar)
+		gutsSlider = homeFragmentView.findViewById(R.id.guts_seekbar)
+		witSlider = homeFragmentView.findViewById(R.id.wit_seekbar)
+
+		// Value TextViews
+		speedValueText = homeFragmentView.findViewById(R.id.speed_value)
+		staminaValueText = homeFragmentView.findViewById(R.id.stamina_value)
+		powerValueText = homeFragmentView.findViewById(R.id.power_value)
+		gutsValueText = homeFragmentView.findViewById(R.id.guts_value)
+		witValueText = homeFragmentView.findViewById(R.id.wit_value)
+
+		// Priority Display
+		priorityDisplay = homeFragmentView.findViewById(R.id.priority_display)
+
+		// Preset Management
+		presetDropdown = homeFragmentView.findViewById(R.id.preset_dropdown)
+		savePresetButton = homeFragmentView.findViewById(R.id.save_preset_button)
+		deletePresetButton = homeFragmentView.findViewById(R.id.delete_preset_button)
+
+		// Initialize preset dropdown
+		initializePresetDropdown()
+
+		// Initialize delete button state
+		updateDeleteButtonState()
+
+		// Save preset button
+		savePresetButton.setOnClickListener {
+			showSavePresetDialog()
+		}
+
+		// Delete preset button
+		deletePresetButton.setOnClickListener {
+			showDeletePresetDialog()
+		}
+	}
+
+	private fun setupListeners() {
+		// Setup slider listeners
+		val sliderChangeListener = Slider.OnChangeListener { slider, value, fromUser ->
+			val intValue = value.toInt()
+			when (slider.id) {
+				R.id.speed_seekbar -> speedValueText.text = intValue.toString()
+				R.id.stamina_seekbar -> staminaValueText.text = intValue.toString()
+				R.id.power_seekbar -> powerValueText.text = intValue.toString()
+				R.id.guts_seekbar -> gutsValueText.text = intValue.toString()
+				R.id.wit_seekbar -> witValueText.text = intValue.toString()
+			}
+			// Update priority display whenever values change
+			updatePriorityDisplay()
+		}
+
+		val sliderTouchListener = object : Slider.OnSliderTouchListener {
+			override fun onStartTrackingTouch(slider: Slider) {}
+			override fun onStopTrackingTouch(slider: Slider) {
+				saveStatTargets()
+				updatePriorityDisplay()
+			}
+		}
+
+		speedSlider.addOnChangeListener(sliderChangeListener)
+		staminaSlider.addOnChangeListener(sliderChangeListener)
+		powerSlider.addOnChangeListener(sliderChangeListener)
+		gutsSlider.addOnChangeListener(sliderChangeListener)
+		witSlider.addOnChangeListener(sliderChangeListener)
+
+		speedSlider.addOnSliderTouchListener(sliderTouchListener)
+		staminaSlider.addOnSliderTouchListener(sliderTouchListener)
+		powerSlider.addOnSliderTouchListener(sliderTouchListener)
+		gutsSlider.addOnSliderTouchListener(sliderTouchListener)
+		witSlider.addOnSliderTouchListener(sliderTouchListener)
+	}
+
+	private fun loadSavedPreferences() {
+		val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
+
+		// Load saved stat targets
+		val speedTarget = sharedPreferences.getInt("current_speed_target", 600)
+		val staminaTarget = sharedPreferences.getInt("current_stamina_target", 600)
+		val powerTarget = sharedPreferences.getInt("current_power_target", 600)
+		val gutsTarget = sharedPreferences.getInt("current_guts_target", 300)
+		val witTarget = sharedPreferences.getInt("current_wit_target", 600)
+
+		// Set slider values
+		speedSlider.value = speedTarget.toFloat()
+		staminaSlider.value = staminaTarget.toFloat()
+		powerSlider.value = powerTarget.toFloat()
+		gutsSlider.value = gutsTarget.toFloat()
+		witSlider.value = witTarget.toFloat()
+
+		// Update value displays
+		speedValueText.text = speedTarget.toString()
+		staminaValueText.text = staminaTarget.toString()
+		powerValueText.text = powerTarget.toString()
+		gutsValueText.text = gutsTarget.toString()
+		witValueText.text = witTarget.toString()
+
+		// Update priority display
+		updatePriorityDisplay()
+	}
+
+	private fun calculateStatPriority(): String {
+		// Get current stat values
+		val speedTarget = speedSlider.value.toInt()
+		val staminaTarget = staminaSlider.value.toInt()
+		val powerTarget = powerSlider.value.toInt()
+		val gutsTarget = gutsSlider.value.toInt()
+		val witTarget = witSlider.value.toInt()
+
+		// Create pairs of stat name and value
+		val stats = listOf(
+			"Speed" to speedTarget,
+			"Stamina" to staminaTarget,
+			"Power" to powerTarget,
+			"Guts" to gutsTarget,
+			"Wit" to witTarget
+		)
+
+		// Sort by value descending (higher value = higher priority)
+		val sortedStats = stats.sortedByDescending { it.second }
+
+		// Build priority string
+		return sortedStats.joinToString("|") { it.first }
+	}
+
+	private fun updatePriorityDisplay() {
+		val priority = calculateStatPriority()
+
+		// Get current stat values for display
+		val speedTarget = speedSlider.value.toInt()
+		val staminaTarget = staminaSlider.value.toInt()
+		val powerTarget = powerSlider.value.toInt()
+		val gutsTarget = gutsSlider.value.toInt()
+		val witTarget = witSlider.value.toInt()
+
+		// Create display text showing order with values
+		val stats = mapOf(
+			"Speed" to speedTarget,
+			"Stamina" to staminaTarget,
+			"Power" to powerTarget,
+			"Guts" to gutsTarget,
+			"Wit" to witTarget
+		)
+
+		val sortedStats = stats.entries.sortedByDescending { it.value }
+		val displayText = "Priority Order: " + sortedStats.joinToString(" > ") { "${it.key}(${it.value})" }
+
+		priorityDisplay.text = displayText
+
+		// Also save the priority to preferences
+		val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
+		sharedPreferences.edit {
+			putString("statPrioritization", priority)
+			commit()
+		}
+	}
+
+	private fun saveStatTargets() {
 		val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
 		
-		// Main Settings page
-		val campaign: String = sharedPreferences.getString("campaign", "")!!
-		val strategy: String = sharedPreferences.getString("strategy", "")!!
+		val speedTarget = speedSlider.value.toInt()
+		val staminaTarget = staminaSlider.value.toInt()
+		val powerTarget = powerSlider.value.toInt()
+		val gutsTarget = gutsSlider.value.toInt()
+		val witTarget = witSlider.value.toInt()
 
-		// Training Settings page
-		val statPrioritization: String = sharedPreferences.getString("statPrioritization", "Speed|Stamina|Power|Guts|Wit")!!
-
-		// Training Stat Targets Settings page
-		val sprintSpeedTarget = sharedPreferences.getInt("trainingSprintStatTarget_speedStatTarget", 900)
-		val sprintStaminaTarget = sharedPreferences.getInt("trainingSprintStatTarget_staminaStatTarget", 300)
-		val sprintPowerTarget = sharedPreferences.getInt("trainingSprintStatTarget_powerStatTarget", 600)
-		val sprintGutsTarget = sharedPreferences.getInt("trainingSprintStatTarget_gutsStatTarget", 300)
-		val sprintWitTarget = sharedPreferences.getInt("trainingSprintStatTarget_witStatTarget", 300)
-
-		val mileSpeedTarget = sharedPreferences.getInt("trainingMileStatTarget_speedStatTarget", 900)
-		val mileStaminaTarget = sharedPreferences.getInt("trainingMileStatTarget_staminaStatTarget", 300)
-		val milePowerTarget = sharedPreferences.getInt("trainingMileStatTarget_powerStatTarget", 600)
-		val mileGutsTarget = sharedPreferences.getInt("trainingMileStatTarget_gutsStatTarget", 300)
-		val mileWitTarget = sharedPreferences.getInt("trainingMileStatTarget_witStatTarget", 300)
-
-		val mediumSpeedTarget = sharedPreferences.getInt("trainingMediumStatTarget_speedStatTarget", 800)
-		val mediumStaminaTarget = sharedPreferences.getInt("trainingMediumStatTarget_staminaStatTarget", 450)
-		val mediumPowerTarget = sharedPreferences.getInt("trainingMediumStatTarget_powerStatTarget", 550)
-		val mediumGutsTarget = sharedPreferences.getInt("trainingMediumStatTarget_gutsStatTarget", 300)
-		val mediumWitTarget = sharedPreferences.getInt("trainingMediumStatTarget_witStatTarget", 300)
-
-		val longSpeedTarget = sharedPreferences.getInt("trainingLongStatTarget_speedStatTarget", 700)
-		val longStaminaTarget = sharedPreferences.getInt("trainingLongStatTarget_staminaStatTarget", 600)
-		val longPowerTarget = sharedPreferences.getInt("trainingLongStatTarget_powerStatTarget", 450)
-		val longGutsTarget = sharedPreferences.getInt("trainingLongStatTarget_gutsStatTarget", 300)
-		val longWitTarget = sharedPreferences.getInt("trainingLongStatTarget_witStatTarget", 300)
-
-		// Training Event Settings page
-		val character = sharedPreferences.getString("character", "Please select one in the Training Event Settings")!!
-		val selectAllCharacters = sharedPreferences.getBoolean("selectAllCharacters", true)
-
-		////////////////////////////////////////////////////////////////////////////////////////////////////
-		////////////////////////////////////////////////////////////////////////////////////////////////////
-		// Set default values in SharedPreferences just in case these keys do not exist yet.
+		// Calculate and save priority
+		val priority = calculateStatPriority()
 
 		sharedPreferences.edit {
-			// Set the default stat prioritization order if it does not exist.
-			putString("statPrioritization", statPrioritization)
-
-			// Set default stat targets for each distance type if they do not exist.
-			putInt("trainingSprintStatTarget_speedStatTarget", sprintSpeedTarget)
-			putInt("trainingSprintStatTarget_staminaStatTarget", sprintStaminaTarget)
-			putInt("trainingSprintStatTarget_powerStatTarget", sprintPowerTarget)
-			putInt("trainingSprintStatTarget_gutsStatTarget", sprintGutsTarget)
-			putInt("trainingSprintStatTarget_witStatTarget", sprintWitTarget)
-
-			putInt("trainingMileStatTarget_speedStatTarget", mileSpeedTarget)
-			putInt("trainingMileStatTarget_staminaStatTarget", mileStaminaTarget)
-			putInt("trainingMileStatTarget_powerStatTarget", milePowerTarget)
-			putInt("trainingMileStatTarget_gutsStatTarget", mileGutsTarget)
-			putInt("trainingMileStatTarget_witStatTarget", mileWitTarget)
-
-			putInt("trainingMediumStatTarget_speedStatTarget", mediumSpeedTarget)
-			putInt("trainingMediumStatTarget_staminaStatTarget", mediumStaminaTarget)
-			putInt("trainingMediumStatTarget_powerStatTarget", mediumPowerTarget)
-			putInt("trainingMediumStatTarget_gutsStatTarget", mediumGutsTarget)
-			putInt("trainingMediumStatTarget_witStatTarget", mediumWitTarget)
-
-			putInt("trainingLongStatTarget_speedStatTarget", longSpeedTarget)
-			putInt("trainingLongStatTarget_staminaStatTarget", longStaminaTarget)
-			putInt("trainingLongStatTarget_powerStatTarget", longPowerTarget)
-			putInt("trainingLongStatTarget_gutsStatTarget", longGutsTarget)
-			putInt("trainingLongStatTarget_witStatTarget", longWitTarget)
-			
+			putInt("current_speed_target", speedTarget)
+			putInt("current_stamina_target", staminaTarget)
+			putInt("current_power_target", powerTarget)
+			putInt("current_guts_target", gutsTarget)
+			putInt("current_wit_target", witTarget)
+			putString("statPrioritization", priority)
 			commit()
 		}
 
-		////////////////////////////////////////////////////////////////////////////////////////////////////
-		////////////////////////////////////////////////////////////////////////////////////////////////////
-		// Update the TextView here based on the information of the SharedPreferences.
+		Log.d(logTag, "Saved stat targets - Speed: $speedTarget, Stamina: $staminaTarget, Power: $powerTarget, Guts: $gutsTarget, Wit: $witTarget")
+		Log.d(logTag, "Auto-calculated priority: $priority")
+	}
 
-		// Add visual indicators for character and support card selections
-		val characterString: String = if (selectAllCharacters) {
-			"👥 All Characters Selected"
-		} else if (character == "" || character.contains("Please select")) {
-			"⚠️ Please select one in the Training Event Settings"
-		} else {
-			"👤 $character"
+	private fun initializePresetDropdown() {
+		val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
+		val presetList = loadPresetList()
+
+		presetAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_dropdown_item_1line, presetList)
+		presetDropdown.setAdapter(presetAdapter)
+
+		presetDropdown.setOnItemClickListener { _, _, position, _ ->
+			val selectedPreset = presetList[position]
+			currentSelectedPreset = selectedPreset
+			applyPreset(selectedPreset)
+			// Enable/disable delete button based on whether it's a custom preset
+			updateDeleteButtonState()
+		}
+	}
+
+	private fun loadPresetList(): MutableList<String> {
+		val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
+		val presets = mutableListOf<String>()
+
+		// Add default presets
+		presets.add("Sprint")
+		presets.add("Mile")
+		presets.add("Medium")
+		presets.add("Long")
+		presets.add("Balanced")
+
+		// Load custom presets
+		val customPresets = sharedPreferences.getStringSet("custom_presets", emptySet()) ?: emptySet()
+		presets.addAll(customPresets)
+
+		return presets
+	}
+
+	private fun showSavePresetDialog() {
+		// Create custom view for the dialog
+		val dialogView = layoutInflater.inflate(android.R.layout.simple_list_item_1, null)
+		val input = EditText(requireContext()).apply {
+			hint = "Enter preset name"
+			setSingleLine(true)
+			requestFocus()
+			// Add padding for better appearance
+			setPadding(50, 20, 50, 20)
+		}
+
+		// Use Material AlertDialog
+		val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+			.setTitle("Save Preset")
+			.setMessage("Enter a name for your current stat configuration:")
+			.setView(input)
+			.setPositiveButton("Save") { _, _ ->
+				val presetName = input.text.toString().trim()
+				if (presetName.isNotEmpty()) {
+					// Check if preset name already exists
+					val existingPresets = loadPresetList()
+					if (existingPresets.contains(presetName)) {
+						// Ask for confirmation to overwrite
+						showOverwriteConfirmDialog(presetName)
+					} else {
+						saveCustomPreset(presetName)
+					}
+				} else {
+					MessageLog.messageLog.add("[PRESET] Please enter a preset name")
+				}
+			}
+			.setNegativeButton("Cancel", null)
+			.create()
+
+		// Show keyboard automatically
+		dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+		dialog.show()
+	}
+
+	private fun showOverwriteConfirmDialog(presetName: String) {
+		com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+			.setTitle("Overwrite Preset?")
+			.setMessage("A preset named '$presetName' already exists. Do you want to overwrite it?")
+			.setPositiveButton("Overwrite") { _, _ ->
+				saveCustomPreset(presetName)
+			}
+			.setNegativeButton("Cancel", null)
+			.show()
+	}
+
+	private fun showDeletePresetDialog() {
+		val currentPreset = currentSelectedPreset ?: presetDropdown.text.toString()
+
+		// Check if it's a default preset
+		val defaultPresets = listOf("Sprint", "Mile", "Medium", "Long", "Balanced")
+		if (defaultPresets.contains(currentPreset)) {
+			MessageLog.messageLog.add("[PRESET] Cannot delete default preset: $currentPreset")
+			return
 		}
 		
-		// Add visual indicator for campaign selection
-		val campaignString: String = if (campaign != "") {
-			"🎯 $campaign"
-		} else {
-			"⚠️ Please select one in the Select Campaign option"
+		if (currentPreset.isEmpty()) {
+			MessageLog.messageLog.add("[PRESET] Please select a preset to delete")
+			return
 		}
-		//strategy
-		val strategyString: String = if (strategy != "") {
-			"🎯 $strategy"
-		} else {
-			"⚠️ Please select one in the Select Race Strategy option"
+
+		com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+			.setTitle("Delete Preset")
+			.setMessage("Are you sure you want to delete the preset '$currentPreset'?")
+			.setPositiveButton("Delete") { _, _ ->
+				deleteCustomPreset(currentPreset)
+			}
+			.setNegativeButton("Cancel", null)
+			.show()
+	}
+
+	private fun deleteCustomPreset(name: String) {
+		val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
+		val editor = sharedPreferences.edit()
+
+		// Remove preset data
+		editor.remove("preset_$name")
+
+		// Remove from custom presets list
+		val customPresets = sharedPreferences.getStringSet("custom_presets", mutableSetOf())?.toMutableSet() ?: mutableSetOf()
+		customPresets.remove(name)
+		editor.putStringSet("custom_presets", customPresets)
+
+		editor.commit()
+
+		// Update dropdown
+		val presetList = loadPresetList()
+		presetAdapter?.clear()
+		presetAdapter?.addAll(presetList)
+		presetAdapter?.notifyDataSetChanged()
+
+		// Clear the dropdown text
+		presetDropdown.setText("", false)
+		currentSelectedPreset = null
+		updateDeleteButtonState()
+
+		MessageLog.messageLog.add("[PRESET] Deleted custom preset: $name")
+	}
+
+	private fun updateDeleteButtonState() {
+		val currentPreset = currentSelectedPreset ?: presetDropdown.text.toString()
+		val defaultPresets = listOf("Sprint", "Mile", "Medium", "Long", "Balanced")
+
+		// Disable delete button for default presets or when no preset is selected
+		deletePresetButton.isEnabled = currentPreset.isNotEmpty() && !defaultPresets.contains(currentPreset)
+	}
+
+	private fun saveCustomPreset(name: String) {
+		val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
+
+		// Create preset JSON object
+		val preset = JSONObject()
+		try {
+			preset.put("speed", speedSlider.value.toInt())
+			preset.put("stamina", staminaSlider.value.toInt())
+			preset.put("power", powerSlider.value.toInt())
+			preset.put("guts", gutsSlider.value.toInt())
+			preset.put("wit", witSlider.value.toInt())
+
+			// Save preset
+			val editor = sharedPreferences.edit()
+			editor.putString("preset_$name", preset.toString())
+
+			// Add to custom presets list
+			val customPresets = sharedPreferences.getStringSet("custom_presets", mutableSetOf())?.toMutableSet() ?: mutableSetOf()
+			customPresets.add(name)
+			editor.putStringSet("custom_presets", customPresets)
+
+			editor.commit()
+
+			// Update dropdown
+			val presetList = loadPresetList()
+			presetAdapter?.clear()
+			presetAdapter?.addAll(presetList)
+			presetAdapter?.notifyDataSetChanged()
+
+			MessageLog.messageLog.add("[PRESET] Saved custom preset: $name")
+		} catch (e: JSONException) {
+			Log.e(logTag, "Failed to save preset: ${e.message}")
 		}
-		val settingsStatusTextView: TextView = homeFragmentView.findViewById(R.id.settings_status)
-		settingsStatusTextView.text = SettingsPrinter.getSettingsString(requireContext())
-		
-		// Now construct the data files if this is the first time.
+	}
+
+	private fun applyPreset(name: String) {
+		val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
+
+		// Check if it's a default preset
+		when (name) {
+			"Sprint" -> {
+				// Sprint: High Speed and Power, moderate others
+				applyPresetValues(1000, 600, 800, 400, 500)
+			}
+			"Mile" -> {
+				// Mile: Balanced Speed and Stamina, good Power
+				applyPresetValues(900, 800, 700, 400, 500)
+			}
+			"Medium" -> {
+				// Medium: Higher Stamina, balanced Speed and Power
+				applyPresetValues(800, 900, 600, 400, 600)
+			}
+			"Long" -> {
+				// Long: Very high Stamina, moderate Speed
+				applyPresetValues(700, 1000, 500, 500, 600)
+			}
+			"Balanced" -> {
+				// Balanced: All stats equal
+				applyPresetValues(600, 600, 600, 600, 600)
+			}
+			else -> {
+				// Load custom preset
+				val presetJson = sharedPreferences.getString("preset_$name", null)
+				if (presetJson != null) {
+					try {
+						val preset = JSONObject(presetJson)
+						applyPresetValues(
+							preset.getInt("speed"),
+							preset.getInt("stamina"),
+							preset.getInt("power"),
+							preset.getInt("guts"),
+							preset.getInt("wit")
+						)
+					} catch (e: JSONException) {
+						Log.e(logTag, "Failed to load preset: ${e.message}")
+					}
+				}
+			}
+		}
+
+		MessageLog.messageLog.add("[PRESET] Applied preset: $name")
+	}
+
+	private fun applyPresetValues(speed: Int, stamina: Int, power: Int, guts: Int, wit: Int) {
+		// Apply to sliders
+		speedSlider.value = speed.toFloat()
+		staminaSlider.value = stamina.toFloat()
+		powerSlider.value = power.toFloat()
+		gutsSlider.value = guts.toFloat()
+		witSlider.value = wit.toFloat()
+
+		// Update displays
+		speedValueText.text = speed.toString()
+		staminaValueText.text = stamina.toString()
+		powerValueText.text = power.toString()
+		gutsValueText.text = guts.toString()
+		witValueText.text = wit.toString()
+
+		// Save the new values
+		saveStatTargets()
+
+		// Update priority display
+		updatePriorityDisplay()
+		}
+
+
+	private fun displayCurrentSettings() {
+		val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
+		val settingsStatusTextView = homeFragmentView.findViewById<TextView>(R.id.settings_status)
+
+		// Get other important settings
+		val campaign = sharedPreferences.getString("campaign", "")
+		val statPrioritization = sharedPreferences.getString("statPrioritization", "Speed|Stamina|Power|Guts|Wit")
+
+		// Build status text
+		val statusText = buildString {
+			appendLine("Current Configuration:")
+			appendLine("Campaign: $campaign")
+			appendLine("Auto-calculated Priority: $statPrioritization")
+		}
+
+		settingsStatusTextView.text = statusText
+
+		// Initialize data
 		if (firstRun) {
-			constructDataClasses()
+			initializeData()
 			firstRun = false
 		}
-		
-		// Force the user to go through the Settings in order to set this required setting.
-		startButton.isEnabled = !campaignString.contains("Please select") && !characterString.contains("Please select")
+	}
 
-		return homeFragmentView
+	private fun initializeData() {
+		// Initialize the data on a separate thread
+		Thread {
+			Log.d(logTag, "Loading Character data...")
+			CharacterData.characters
+			Log.d(logTag, "Character data has been loaded.")
+
+			Log.d(logTag, "Loading Support data...")
+			SupportData.supports
+			Log.d(logTag, "Support data has been loaded.")
+
+			Log.d(logTag, "Loading Skill data...")
+			SkillData.skills
+			Log.d(logTag, "Skill data has been loaded.")
+		}.start()
 	}
 	
 	override fun onResume() {
@@ -309,110 +712,19 @@ class HomeFragment : Fragment() {
 			}
 		}
 
-		// Shows a dialog explaining how to enable Accessibility Service when restricted settings are detected.
-		// The dialog provides options to navigate to App Info or Accessibility Settings to complete the setup.
+		Log.d(logTag, "This application's Accessibility Service is currently turned off.")
+
 		AlertDialog.Builder(myContext).apply {
 			setTitle(R.string.accessibility_disabled)
-			setMessage(
-				"""
-            To enable Accessibility Service:
-            
-            1. Tap "Go to App Info".
-            2. Tap the 3-dot menu in the top right. If not available, you can skip to step 4.
-            3. Tap "Allow restricted settings".
-            4. Return to Accessibility Settings and enable the service.
-            """.trimIndent()
-			)
-			setPositiveButton("Go to App Info") { _, _ ->
-				val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-					data = "package:${myContext.packageName}".toUri()
-				}
-				startActivity(intent)
-			}
-			setNeutralButton("Accessibility Settings") { _, _ ->
-				val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-				startActivity(intent)
+			setMessage(R.string.accessibility_disabled_message)
+			setPositiveButton(R.string.go_to_settings) { _, _ ->
+				Log.d(logTag, "Accessibility Service is not detected. Redirecting user to Accessibility Settings.")
+				val accessibilitySettingsIntent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+				myContext.startActivity(accessibilitySettingsIntent)
 			}
 			setNegativeButton(android.R.string.cancel, null)
 		}.show()
 
 		return false
-	}
-	
-	/**
-	 * Construct the data classes associated with Characters, Support Cards and Skills from the provided JSON data files.
-	 */
-	private fun constructDataClasses() {
-		// Construct the data class for Characters and Support Cards.
-		val fileList = arrayListOf("characters.json", "supports.json")
-		while (fileList.isNotEmpty()) {
-			val fileName = fileList[0]
-			fileList.removeAt(0)
-			val objectString = myContext.assets.open("data/$fileName").bufferedReader().use { it.readText() }
-			
-			JsonReader(StringReader(objectString)).use { reader ->
-				reader.beginObject {
-					while (reader.hasNext()) {
-						// Grab the name.
-						val name = reader.nextName()
-						
-						// Now iterate through each event and collect all of them and their option rewards into a map.
-						val eventOptionRewards = mutableMapOf<String, ArrayList<String>>()
-						reader.beginObject {
-							while (reader.hasNext()) {
-								// Grab the event name.
-								val eventName = reader.nextName()
-								eventOptionRewards.putIfAbsent(eventName, arrayListOf())
-								
-								reader.beginArray {
-									// Grab all of the event option rewards for this event and add them to the map.
-									while (reader.hasNext()) {
-										val optionReward = reader.nextString()
-										eventOptionRewards[eventName]?.add(optionReward)
-									}
-								}
-							}
-						}
-						
-						// Finally, put into the MutableMap the key value pair depending on the current category.
-						if (fileName == "characters.json") {
-							CharacterData.characters[name] = eventOptionRewards
-						} else {
-							SupportData.supports[name] = eventOptionRewards
-						}
-					}
-				}
-			}
-		}
-		
-		// Now construct the data class for Skills.
-		val objectString = myContext.assets.open("data/skills.json").bufferedReader().use { it.readText() }
-		JsonReader(StringReader(objectString)).use { reader ->
-			reader.beginObject {
-				while (reader.hasNext()) {
-					// Grab the name.
-					val skillName = reader.nextName()
-					SkillData.skills.putIfAbsent(skillName, mutableMapOf())
-					
-					reader.beginObject {
-						// Skip the id.
-						reader.nextName()
-						reader.nextInt()
-						
-						// Grab the English name and description.
-						reader.nextName()
-						val skillEnglishName = reader.nextString()
-						reader.nextName()
-						val skillEnglishDescription = reader.nextString()
-						
-						// Finally, collect them into a map and put them into the data class.
-						val tempMap = mutableMapOf<String, String>()
-						tempMap["englishName"] = skillEnglishName
-						tempMap["englishDescription"] = skillEnglishDescription
-						SkillData.skills[skillName] = tempMap
-					}
-				}
-			}
-		}
 	}
 }
