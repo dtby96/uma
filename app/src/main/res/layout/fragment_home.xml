@@ -57,7 +57,7 @@
                         app:iconSize="32dp"
                         app:iconGravity="textStart"
                         app:cornerRadius="16dp"
-                        style="@style/Widget.Material3.Button.FilledButton" />
+                        style="@style/Widget.Material3.Button" />
 
                     <TextView
                         android:layout_width="match_parent"

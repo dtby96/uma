@@ -44,9 +44,9 @@
         <item name="android:fontFamily">sans-serif-medium</item>
 
         <!-- Shape -->
-        <item name="shapeSmall">@style/ShapeAppearance.Material3.SmallComponent</item>
-        <item name="shapeMedium">@style/ShapeAppearance.Material3.MediumComponent</item>
-        <item name="shapeLarge">@style/ShapeAppearance.Material3.LargeComponent</item>
+        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.Material3.SmallComponent</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.Material3.MediumComponent</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.Material3.LargeComponent</item>
     </style>
 
     <style name="Theme.AppTheme.NoActionBar">

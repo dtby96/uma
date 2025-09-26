@@ -19,6 +19,7 @@ import com.github.mikephil.charting.interfaces.datasets.IRadarDataSet
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
 
+
 class DashboardFragment : Fragment() {
 
     private lateinit var viewModel: DashboardViewModel
@@ -294,7 +295,7 @@ class DashboardFragment : Fragment() {
         targetDataSet.fillColor = ContextCompat.getColor(requireContext(), R.color.md_grey_200)
         targetDataSet.setDrawFilled(false)
         targetDataSet.lineWidth = 1f
-        targetDataSet.enableDashedLine(10f, 5f, 0f)
+        targetDataSet.enableDashedHighlightLine(10f, 5f, 0f)
 
         val dataSets = ArrayList<IRadarDataSet>()
         dataSets.add(currentDataSet)
@@ -340,6 +341,7 @@ class DashboardFragment : Fragment() {
         )
     }
 }
+
 
 // Data classes
 data class TrainingStats(
