@@ -2490,13 +2490,14 @@ class Game(val myContext: Context) {
 			// Try to proceed with the selected extra race instead of falling through to Back.
 			val proceeded =
 				findAndTapImage("race_confirm", tries = 2, region = imageUtils.regionBottomHalf)
-
 			if (!proceeded) {
 				printToLog("[RACE] Could not find a proceed button (race/race_start/ok). Falling back to Back.")
 				findAndTapImage("back", region = imageUtils.regionBottomHalf)
 				return false
 			}
 
+			//tap again to press race
+			findAndTapImage("race_confirm", tries = 2, region = imageUtils.regionBottomHalf)
 			// Give the UI a moment to move to the next screen; the outer flow continues the race.
 			wait(0.8)
 			return true
