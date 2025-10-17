@@ -31,6 +31,38 @@ import kotlin.collections.component2
 import kotlin.math.sqrt
 import kotlin.text.replace
 
+object OcrParsers {
+	/**
+	 * Extract a fan count from noisy OCR like:
+	 * "f +2,600 fans", "1 +11,000 fans", "11,500 fans", "Approx. 3 200 fans"
+	 *
+	 * Rule:
+	 *  - Prefer the number immediately before the token "fans"
+	 *  - Else, if a '+' exists, take the number after '+'
+	 *  - Else, take the largest numeric group in the string
+	 *  - Commas allowed; spaces between digits ignored; non-digits ignored
+	 */
+	fun parseFans(raw: String): Int {
+		val s = raw.lowercase()
+
+		// 1) number right before "fans"
+		Regex("""(\d[\d,\s]*)\s*fans\b""").find(s)?.let {
+			return it.groupValues[1].filter { ch -> ch.isDigit() }.toInt()
+		}
+
+		// 2) number after '+'
+		Regex("""\+\s*(\d[\d,\s]*)""").find(s)?.let {
+			return it.groupValues[1].filter { ch -> ch.isDigit() }.toInt()
+		}
+
+		// 3) largest numeric group anywhere
+		val groups = Regex("""\d[\d,\s]*""").findAll(s).map { g ->
+			g.value.filter { ch -> ch.isDigit() }.toIntOrNull() ?: -1
+		}.filter { it >= 0 }.toList()
+
+		return if (groups.isNotEmpty()) groups.max() else -1
+	}
+}
 
 /**
  * Utility functions for image processing via CV like OpenCV.
@@ -1316,8 +1348,10 @@ class ImageUtils(context: Context, private val game: Game) {
 
 			try {
 				Log.d(tag, "Converting $result to integer for fans")
-				val cleanedResult = result.replace(Regex("[^0-9]"), "")
-				RaceDetails(cleanedResult.toInt(), predictionCheck)
+//				val cleanedResult = result.replace(Regex("[^0-9]"), "")
+				val parsedFans = OcrParsers.parseFans(result)
+				Log.d(tag, "Parsed fan count: $parsedFans from \"$result\"") // keep log terse
+				RaceDetails(parsedFans.toInt(), predictionCheck)
 			} catch (_: NumberFormatException) {
 				RaceDetails(-1, predictionCheck)
 			}

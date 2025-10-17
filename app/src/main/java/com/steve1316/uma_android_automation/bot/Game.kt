@@ -2434,7 +2434,7 @@ class Game(val myContext: Context) {
 				statusLocation.x.toFloat(), statusLocation.y.toFloat() + 350f,
 				statusLocation.x.toFloat(), statusLocation.y.toFloat()
 			)
-			wait(1.0)
+			wait(1.5)
 
 			run {
 				val fanSpots = imageUtils.findAll("race_selection_fans", region = imageUtils.regionBottomHalf)
@@ -2472,7 +2472,7 @@ class Game(val myContext: Context) {
 
 			if (best == null) {
 				printToLog("[WARNING] No valid extra race (fans == -1 for all). Canceling the racing process and doing something else.")
-				findAndTapImage("back", region = imageUtils.regionBottomHalf)
+				findAndTapImage("back", tries = 3, region = imageUtils.regionBottomHalf)
 				return false
 			}
 			printToLog(
